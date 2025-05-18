@@ -1,0 +1,12 @@
+branch: Sisyphus
+arch: x86_64
+mirror: http://ftp.altlinux.org/pub/distributions
+packager: "User <user@altlinux.org>"
+sandboxes:
+  Sisyphus-x86_64:
+    mirror: http://ftp.altlinux.org/pub/distributions
+logging:
+  level: ERROR
+  file_level: DEBUG
+  rotation: 10 MB
+  format: "{time} | {level} | {message}"

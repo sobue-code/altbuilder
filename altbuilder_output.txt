@@ -1,0 +1,873 @@
+===== Структура altbuilder =====
+
+altbuilder/adapters/__init__.py
+Пропущен(bin): altbuilder/adapters/__init__.py
+altbuilder/adapters/base.py
+
+===== altbuilder/adapters/base.py =====
+from abc import ABC, abstractmethod
+import subprocess
+from ..exceptions import ToolError
+
+class ToolAdapter(ABC):
+    @abstractmethod
+    def run_command(self, cmd, **kwargs):
+        pass
+
+    def execute(self, cmd, **kwargs):
+        try:
+            return self.run_command(cmd, **kwargs)
+        except subprocess.CalledProcessError as e:
+            raise ToolError(f"Command {cmd} failed with exit code {e.returncode}: {e.output}")
+altbuilder/adapters/gear.py
+
+===== altbuilder/adapters/gear.py =====
+import subprocess
+from .base import ToolAdapter
+from ..utils.logger import logger
+
+
+class GearAdapter(ToolAdapter):
+    def run_command(self, cmd, **kwargs):
+        logger.info(f"Running gear command: {' '.join(cmd)}")
+        return subprocess.run(cmd, check=True, text=True, capture_output=True, **kwargs)
+
+    def build(self, workdir, hasher_args):
+        cmd = ["gear", "--verbose", "--commit", "--hasher", "--"] + hasher_args
+        self.execute(cmd)
+altbuilder/adapters/hasher.py
+
+===== altbuilder/adapters/hasher.py =====
+import subprocess
+import os
+from .base import ToolAdapter
+from ..utils.logger import logger
+from ..exceptions import ToolError
+
+
+class HasherAdapter(ToolAdapter):
+    def run_command(self, cmd, **kwargs):
+        logger.info(f"Running hasher command: {' '.join(cmd)}")
+        return subprocess.run(cmd, check=True, text=True, capture_output=True, **kwargs)
+
+    def init_chroot(self, workdir, arch, apt_config):
+        pass
+
+    def build(self, workdir, apt_config, arch, src_path, extra_args=None):
+        pass
+
+    def shell(self, workdir, root=False, internet=False):
+        cmd = ["hsh-shell"]
+        if root:
+            cmd.append("--rooter")
+        if internet:
+            cmd.append("--mount=/dev/pts")
+            os.environ["share_network"] = "yes"
+            os.environ["share_ipc"] = "yes"
+        cmd.append(workdir)
+        logger.info(f"Launching interactive shell: {' '.join(cmd)}")
+        os.execvp(cmd[0], cmd)
+altbuilder/adapters/apt_repo.py
+
+===== altbuilder/adapters/apt_repo.py =====
+import subprocess
+from .base import ToolAdapter
+from ..utils.logger import logger
+
+class AptRepoAdapter(ToolAdapter):
+    def run_command(self, cmd, **kwargs):
+        logger.info(f"Running apt-repo command: {' '.join(cmd)}")
+        return subprocess.run(cmd, check=True, text=True, capture_output=True, **kwargs)
+
+    def add(self, source):
+        self.execute(['apt-repo', 'add', source])
+
+    def list(self):
+        return self.execute(['apt-repo', 'list']).stdout
+altbuilder/core/__init__.py
+Пропущен(bin): altbuilder/core/__init__.py
+altbuilder/core/build_manager.py
+
+===== altbuilder/core/build_manager.py =====
+import os
+from ..exceptions import BuildError
+from ..utils.logger import logger
+from ..utils.metrics import Metrics
+from ..adapters.gear import GearAdapter
+from ..adapters.hasher import HasherAdapter
+
+
+class BuildManager:
+    def __init__(self, environment, gear_adapter=None, hasher_adapter=None):
+        self.environment = environment
+        self.gear_adapter = gear_adapter or GearAdapter()
+        self.hasher_adapter = hasher_adapter or HasherAdapter()
+        self.metrics = Metrics()
+
+    def build(self, source_dir=None, apt_conf=None, only_srpm=False):
+        if not self.environment.exists():
+            self.environment.init()
+
+        source_dir = source_dir or os.getcwd()
+        package_name = os.path.basename(source_dir)
+        logger.info(f"Building {package_name} in {self.environment.name}")
+
+        with self.metrics.track_build(package_name):
+            hasher_args = [
+                "hsh",
+                "--apt-config",
+                apt_conf,
+                "--no-sisyphus-check=packager,gpg",
+                "--verbose",
+                "--no-sisyphus-check=packager,gpg",
+                "--target",
+                self.environment.config["arch"],
+                self.environment.hasher_dir,
+                "--lazy-cleanup",
+            ]
+            if only_srpm:
+                hasher_args.append("--build-srpm-only")
+            self.gear_adapter.build(self.environment.hasher_dir, hasher_args)
+altbuilder/core/dependency_resolver.py
+
+===== altbuilder/core/dependency_resolver.py =====
+from ..utils.logger import logger
+
+class DependencyResolver:
+    def resolve(self, package):
+        logger.info(f"Resolving dependencies for {package}")
+altbuilder/core/environment.py
+
+===== altbuilder/core/environment.py =====
+import os
+import shutil
+import subprocess
+from ..exceptions import EnvironmentError
+from ..utils.logger import logger
+from ..utils.helpers import get_host_arch, run_logged_command
+from ..adapters.hasher import HasherAdapter
+
+
+class Environment:
+    def __init__(self, name, config, task_id=None, adapter=None):
+        self.name = name
+        self.config = config
+        self.task_id = task_id
+        self.base_dir = os.path.join(config["base_dir"], ".altbuilder", name)
+        self.hasher_dir = os.path.join(self.base_dir, "hasher")
+        self.apt_conf = os.path.join(self.base_dir, "apt.conf")
+        self.sources_list = os.path.join(self.base_dir, "sources.list")
+        self.priorities = os.path.join(self.base_dir, "priorities")
+        self.adapter = adapter or HasherAdapter()
+
+    def _generate_sources_list(self):
+        """Generate sources.list based on branch, architecture and task_id."""
+        lines = []
+        mirror = self.config.get("mirror", "http://ftp.altlinux.org/pub/distributions")
+        branch = self.config.get("branch", "Sisyphus")
+        arch = self.config.get("arch", "x86_64")
+        if mirror.startswith("file://"):
+            lines.append(f"rpm {mirror}/{branch.lower()}/last {arch} classic")
+            lines.append(f"rpm {mirror}/{branch.lower()}/last noarch classic")
+            if arch == "x86_64":
+                lines.append(f"rpm {mirror}/{branch.lower()}/last {arch}-i586 classic")
+        else:
+            lines.append(f"rpm [alt] {mirror} ALTLinux/{branch}/{arch} classic")
+            lines.append(f"rpm [alt] {mirror} ALTLinux/{branch}/noarch classic")
+            if arch == "x86_64":
+                lines.append(
+                    f"rpm [alt] {mirror} ALTLinux/{branch}/{arch}-i586 classic"
+                )
+        if self.task_id:
+            mirror_task = self.config.get("mirror_task", "http://git.altlinux.org")
+            lines.append(f"rpm {mirror_task} repo/{self.task_id}/{arch} task")
+            logger.info(f"Added task repository for task_id={self.task_id}")
+        else:
+            logger.debug("No task_id provided, skipping task repository")
+        with open(self.sources_list, "w") as f:
+            f.write("\n".join(lines))
+
+    def _generate_priorities(self):
+        """Generate priorities file based on branch."""
+        branch = self.config.get("branch", "Sisyphus").lower()
+        release = (
+            "altlinux-release-sis"
+            if branch == "sisyphus"
+            else f"altlinux-release-{branch}"
+        )
+        content = f"""Important:
+basesystem
+{release}
+Required:
+apt
+"""
+        with open(self.priorities, "w") as f:
+            f.write(content)
+
+    def _generate_apt_conf(self):
+        """Generate apt.conf file with links to sources.list and priorities."""
+        conf = f"""
+Dir::Etc::main "/dev/null";
+Dir::Etc::parts "/var/empty";
+Dir::Etc::sourcelist "{self.sources_list}";
+Dir::Etc::pkgpriorities "{self.priorities}";
+APT::Cache-Limit "201326592";
+APT::Architecture "{self.config['arch']}";
+"""
+        with open(self.apt_conf, "w") as f:
+            f.write(conf)
+
+    def _generate_config_files(self):
+        """Generate all necessary config files."""
+        logger.debug(f"Generating config files for sandbox {self.name}")
+        self._generate_sources_list()
+        self._generate_priorities()
+        self._generate_apt_conf()
+
+    def init(self):
+        """Initialize the sandbox with preliminary generation of configuration files."""
+        logger.info(f"Initializing sandbox: {self.name}")
+        if os.path.exists(self.base_dir):
+            logger.debug(f"Removing existing sandbox directory {self.base_dir}")
+            shutil.rmtree(self.base_dir)
+        os.makedirs(self.hasher_dir, exist_ok=True)
+        self._generate_config_files()
+        cmd = ["hsh", "--apt-config", self.apt_conf, "--initroot-only"]
+        host_arch = get_host_arch()
+        if self.config["arch"] != host_arch:
+            run_logged_command(["rpm", "-q", "qemu-user-static"], check=True)
+            cmd += [
+                f'--with-qemu={self.config["arch"]}',
+                f'--target={self.config["arch"]}',
+            ]
+        else:
+            cmd += [f'--target={self.config["arch"]}']
+        cmd.append(self.hasher_dir)
+        run_logged_command(cmd, check=True)
+
+    def exists(self):
+        """Check if the sandbox exists."""
+        return os.path.exists(os.path.join(self.hasher_dir, "chroot"))
+
+    def clean(self):
+        """Remove the sandbox directory and its contents."""
+        logger.info(f"Cleaning sandbox: {self.name}")
+        if not os.path.exists(self.base_dir):
+            raise EnvironmentError(f"Sandbox {self.name} does not exist.")
+        try:
+            cmd = ["hsh", "--cleanup-only", self.hasher_dir]
+            run_logged_command(cmd, check=True)
+            shutil.rmtree(self.base_dir)
+            logger.info(f"Sandbox {self.name} cleaned successfully.")
+        except (subprocess.CalledProcessError, OSError) as e:
+            logger.error(f"Failed to clean sandbox {self.name}: {e}")
+            raise EnvironmentError(f"Failed to clean sandbox {self.name}: {e}")
+
+    def shell(self, root=False, internet=False):
+        """Launch a shell inside the sandbox."""
+        if not self.exists():
+            raise EnvironmentError(f"Sandbox {self.name} does not exist.")
+        logger.info(f"Launching shell for sandbox: {self.name}")
+        if internet:
+            self.enable_internet()
+        self.adapter.shell(self.hasher_dir, root, internet)
+
+    def enable_internet(self):
+        """Enable internet access in the sandbox by configuring DNS."""
+        logger.info(f"Enabling internet in sandbox {self.name}")
+        try:
+            dns = (
+                subprocess.check_output(
+                    "grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | head -n1",
+                    shell=True,
+                )
+                .decode()
+                .strip()
+            )
+            if not dns:
+                logger.error("Failed to find DNS server.")
+                raise EnvironmentError("DNS server not found.")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to retrieve DNS server: {e}")
+            raise EnvironmentError("Could not retrieve DNS server.")
+
+        cmd = [
+            "hsh-shell",
+            "--rooter",
+            "--mountpoints=/proc",
+            self.hasher_dir,
+        ]
+        logger.info("Writing DNS config inside sandbox")
+        try:
+            subprocess.run(
+                cmd,
+                input=f"echo 'nameserver {dns}' > /etc/resolv.conf\nexit\n".encode(),
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to configure DNS in sandbox: {e}")
+            raise EnvironmentError(f"Failed to configure DNS: {e}")
+        logger.info(f"Internet enabled in sandbox {self.name} with DNS: {dns}")
+altbuilder/core/repo_manager.py
+
+===== altbuilder/core/repo_manager.py =====
+from ..adapters.apt_repo import AptRepoAdapter
+from ..utils.logger import logger
+
+class RepoManager:
+    def __init__(self, adapter=None):
+        self.adapter = adapter or AptRepoAdapter()
+
+    def add_repo(self, source):
+        logger.info(f"Adding repository: {source}")
+        self.adapter.add(source)
+
+    def list_repos(self):
+        return self.adapter.list()
+altbuilder/utils/__init__.py
+Пропущен(bin): altbuilder/utils/__init__.py
+altbuilder/utils/logger.py
+
+===== altbuilder/utils/logger.py =====
+import os
+import sys
+from loguru import logger
+
+
+def init_logger(sandbox_name=None, log_dir=None, config=None):
+    """Initialize logger with settings from configuration."""
+    logger.remove()
+    log_config = (
+        config["logging"]
+        if config
+        else {
+            "level": "INFO",
+            "file_level": "DEBUG",
+            "rotation": "10 MB",
+            "format": "{time} | {level} | {message}",
+        }
+    )
+
+    # Add console handler
+    logger.add(sys.stderr, level=log_config["level"], format=log_config["format"])
+
+    # Add global log file handler
+    if config and "base_dir" in config:
+        global_log_file = os.path.join(config["base_dir"], "altbuilder.log")
+        os.makedirs(os.path.dirname(global_log_file), exist_ok=True)
+        logger.add(
+            global_log_file,
+            rotation=log_config["rotation"],
+            level=log_config["file_level"],
+            format=log_config["format"],
+        )
+
+    # Add sandbox-specific file handler if sandbox_name and log_dir are provided
+    if sandbox_name and log_dir:
+        log_file = os.path.join(log_dir, sandbox_name, "sandbox.log")
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        logger.add(
+            log_file,
+            rotation=log_config["rotation"],
+            level=log_config["file_level"],
+            format=log_config["format"],
+        )
+
+
+logger = logger
+altbuilder/utils/metrics.py
+
+===== altbuilder/utils/metrics.py =====
+import time
+from contextlib import contextmanager
+from .logger import logger
+
+class Metrics:
+    def __init__(self):
+        self.builds = []
+
+    @contextmanager
+    def track_build(self, package_name):
+        start_time = time.time()
+        success = False
+        try:
+            yield
+            success = True
+        finally:
+            duration = time.time() - start_time
+            self.builds.append({'package': package_name, 'duration': duration, 'success': success})
+            logger.info(f"Build of {package_name} {'succeeded' if success else 'failed'} in {duration:.2f}s")
+
+    def report(self):
+        success_rate = sum(1 for b in self.builds if b['success']) / len(self.builds) if self.builds else 0
+        avg_time = sum(b['duration'] for b in self.builds) / len(self.builds) if self.builds else 0
+        return {'success_rate': success_rate, 'avg_build_time': avg_time}
+altbuilder/utils/helpers.py
+
+===== altbuilder/utils/helpers.py =====
+import subprocess
+import platform
+from .logger import logger
+
+
+def get_host_arch():
+    machine = platform.machine()
+    if machine in ["x86_64", "amd64"]:
+        return "x86_64"
+    elif machine in ["i386", "i686"]:
+        return "i586"
+    elif machine == "arm":
+        return "armh"
+    elif machine == "aarch64":
+        return "aarch64"
+    else:
+        return machine
+
+
+def colorize(text, color=None, bold=False):
+    colors = {
+        "red": "\033[31m",
+        "green": "\033[32m",
+        "yellow": "\033[33m",
+        "cyan": "\033[36m",
+    }
+    reset = "\033[0m"
+    bold_code = "\033[1m" if bold else ""
+    color_code = colors.get(color, "")
+    return f"{color_code}{bold_code}{text}{reset}"
+
+
+def run_logged_command(cmd, check=True, **kwargs):
+    """Run a command, log its execution, and capture output."""
+    logger.debug(f"Executing command: {' '.join(cmd)}")
+    try:
+        result = subprocess.run(
+            cmd, check=check, text=True, capture_output=True, **kwargs
+        )
+        if result.stdout:
+            logger.debug(f"Command output: {result.stdout.strip()}")
+        if result.stderr:
+            logger.debug(f"Command stderr: {result.stderr.strip()}")
+        return result
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed with exit code {e.returncode}: {e.stderr}")
+        raise
+altbuilder/__init__.py
+Пропущен(bin): altbuilder/__init__.py
+altbuilder/cli.py
+
+===== altbuilder/cli.py =====
+import click
+import os
+import shutil
+import subprocess
+from .config import load_config, get_sandbox_config
+from .core.environment import Environment
+from .core.build_manager import BuildManager
+from .utils.logger import init_logger, logger
+from .utils.helpers import colorize, run_logged_command
+
+
+@click.group()
+@click.option(
+    "--sandbox",
+    help="Sandbox name (e.g., Sisyphus-x86_64). Defaults to <branch>-<arch> from config.",
+)
+def cli(sandbox):
+    """Command-line interface for managing ALT Linux sandboxes."""
+    ctx = click.get_current_context()
+    ctx.obj = {"sandbox": sandbox}
+    config = load_config()
+    init_logger(config=config)
+    logger.info(f"Loaded config from {config.get('config_file', 'default')}")
+
+
+@cli.command()
+@click.option("--branch", help="Branch name (e.g., Sisyphus). Overrides config.")
+@click.option("--arch", help="Architecture (e.g., x86_64). Overrides config.")
+@click.option("--task", type=int, help="Attach task repository by ID.")
+@click.option("--sandbox", help="Sandbox name. Defaults to <branch>-<arch> or config.")
+def init(branch, arch, task, sandbox):
+    """Initialize a new sandbox environment."""
+    config = load_config()
+    default_sandbox = f"{branch or config['branch']}-{arch or config['arch']}"
+    sandbox_name = sandbox or default_sandbox
+    if task:
+        sandbox_name += f"-{task}"
+    sandbox_config = get_sandbox_config(sandbox_name, config)
+    init_logger(sandbox_name, config["build_logs_dir"], config)
+    env = Environment(sandbox_name, sandbox_config, task_id=task)
+    click.echo(colorize(f"Initializing sandbox: {sandbox_name}", bold=True))
+    env.init()
+    click.echo(
+        colorize(f"Sandbox {sandbox_name} initialized successfully.", color="green")
+    )
+
+
+@cli.command()
+@click.argument("source_dir", required=False)
+@click.option(
+    "--sandbox", help="Sandbox name. Defaults to <branch>-<arch> from config."
+)
+def build(source_dir, sandbox):
+    """Build a package in the specified sandbox."""
+    config = load_config()
+    sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
+    sandbox_config = get_sandbox_config(sandbox_name, config)
+    init_logger(sandbox_name, config["build_logs_dir"], config)
+    env = Environment(sandbox_name, sandbox_config)
+    builder = BuildManager(env)
+    click.echo(colorize(f"Building in sandbox: {sandbox_name}", bold=True))
+    builder.build(source_dir, env.apt_conf)
+    click.echo(colorize(f"Build completed in sandbox {sandbox_name}.", color="green"))
+
+
+@cli.command()
+def list():
+    """List all existing sandboxes."""
+    config = load_config()
+    logger.info("Listing all existing sandboxes")
+    base_dir = config["base_dir"]
+    altbuilder_dir = os.path.join(base_dir, ".altbuilder")
+    if not os.path.exists(altbuilder_dir):
+        click.echo(colorize("No sandboxes found.", color="yellow"))
+        logger.info("No sandboxes found")
+        return
+    sandboxes = [
+        d
+        for d in os.listdir(altbuilder_dir)
+        if os.path.isdir(os.path.join(altbuilder_dir, d))
+    ]
+    if not sandboxes:
+        click.echo(colorize("No sandboxes found.", color="yellow"))
+        logger.info("No sandboxes found")
+    else:
+        click.echo(colorize("Existing sandboxes:", bold=True))
+        for sandbox in sandboxes:
+            sandbox_path = os.path.join(altbuilder_dir, sandbox)
+            click.echo(
+                f"{colorize(sandbox, color='cyan', bold=True)} -> {colorize(sandbox_path, color='green')}"
+            )
+        logger.info(f"Found {len(sandboxes)} sandboxes")
+        logger.debug(f"Sandboxes: {', '.join(sandboxes)}")
+
+
+@cli.command()
+@click.option(
+    "--sandbox", help="Sandbox name. Defaults to <branch>-<arch> from config."
+)
+@click.option("--root", is_flag=True, help="Run shell as root.")
+@click.option("--internet", is_flag=True, help="Enable internet in the shell.")
+def shell(sandbox, root, internet):
+    """Enter the shell of the specified sandbox.
+
+    The sandbox can be specified using the global --sandbox option
+    (e.g., `altbuilder --sandbox Sisyphus-x86_64 shell`) or the
+    command-specific --sandbox option (e.g., `altbuilder shell --sandbox Sisyphus-x86_64`).
+    """
+    config = load_config()
+    sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
+    sandbox_config = get_sandbox_config(sandbox_name, config)
+    init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
+    env = Environment(sandbox_name, sandbox_config)
+    click.echo(colorize(f"Entering shell for sandbox: {sandbox_name}", bold=True))
+    try:
+        env.shell(root, internet)
+    except EnvironmentError as e:
+        click.echo(colorize(f"Error: {e}", color="red"))
+
+
+@cli.command()
+@click.option(
+    "--sandbox", help="Sandbox name to clean. Defaults to <branch>-<arch> from config."
+)
+@click.option("--all", is_flag=True, help="Clean all sandboxes.")
+def clean(sandbox, all):
+    """Clean the specified sandbox or all sandboxes."""
+    config = load_config()
+    base_dir = config["base_dir"]
+    altbuilder_dir = os.path.join(base_dir, ".altbuilder")
+
+    if all:
+        logger.info("Cleaning all sandboxes")
+        if not os.path.exists(altbuilder_dir):
+            click.echo(colorize("No sandboxes to clean.", color="yellow"))
+            logger.info("No sandboxes found")
+            return
+        sandboxes = [
+            d
+            for d in os.listdir(altbuilder_dir)
+            if os.path.isdir(os.path.join(altbuilder_dir, d))
+        ]
+        failed = []
+        for sandbox in sandboxes:
+            sandbox_path = os.path.join(altbuilder_dir, sandbox)
+            cmd = ["hsh", "--cleanup-only", sandbox_path + "/hasher"]
+            try:
+                run_logged_command(cmd, check=True)
+                shutil.rmtree(sandbox_path, ignore_errors=True)
+                click.echo(colorize(f"Sandbox {sandbox} cleaned.", color="green"))
+                logger.info(f"Cleaned sandbox {sandbox}")
+            except (subprocess.CalledProcessError, OSError) as e:
+                click.echo(colorize(f"Error cleaning {sandbox}: {e}", color="red"))
+                logger.error(f"Failed to clean sandbox {sandbox}: {e}")
+                failed.append(sandbox)
+        if failed:
+            click.echo(
+                colorize(
+                    f"Failed to clean {len(failed)} sandboxes: {', '.join(failed)}",
+                    color="red",
+                )
+            )
+            logger.error(f"Failed sandboxes: {', '.join(failed)}")
+        else:
+            logger.info("All sandboxes cleaned successfully")
+    elif sandbox:
+        sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
+        sandbox_config = get_sandbox_config(sandbox_name, config)
+        init_logger(sandbox_name, config["build_logs_dir"], config)
+        env = Environment(sandbox_name, sandbox_config)
+        try:
+            cmd = ["hsh", "--cleanup-only", env.hasher_dir]
+            run_logged_command(cmd, check=True)
+            env.clean()
+            click.echo(colorize(f"Sandbox {sandbox_name} cleaned.", color="green"))
+            logger.info(f"Cleaned sandbox {sandbox_name}")
+        except (subprocess.CalledProcessError, EnvironmentError) as e:
+            click.echo(colorize(f"Error: {e}", color="red"))
+            logger.error(f"Failed to clean sandbox {sandbox_name}: {e}")
+    else:
+        click.echo(
+            colorize("Please specify a sandbox to clean or use --all.", color="red")
+        )
+
+
+if __name__ == "__main__":
+    cli()
+altbuilder/config.py
+
+===== altbuilder/config.py =====
+import os
+from pathlib import Path
+import yaml
+from .utils.logger import logger
+from .exceptions import ConfigError
+
+USER_CONFIG_DIR = Path.home() / ".altbuilder"
+USER_CONFIG_FILE = USER_CONFIG_DIR / "config.yaml"
+DEFAULT_CONFIG_FILE = Path(__file__).parent.parent / "config" / "default_config.yaml"
+
+
+def load_config(config_file=None):
+    """Load configuration from file or default."""
+    config = {}
+    config_file = Path(config_file or USER_CONFIG_FILE)
+    if config_file.exists():
+        try:
+            with open(config_file, "r") as f:
+                config = yaml.safe_load(f) or {}
+            config["config_file"] = str(config_file)
+        except Exception as e:
+            logger.error(f"Failed to load {config_file}: {e}")
+            raise ConfigError(f"Invalid configuration file: {e}")
+    else:
+        try:
+            with open(DEFAULT_CONFIG_FILE, "r") as f:
+                config = yaml.safe_load(f) or {}
+            config["config_file"] = str(DEFAULT_CONFIG_FILE)
+        except Exception as e:
+            logger.error(f"Failed to load default config: {e}")
+            raise ConfigError(f"Cannot load default config: {e}")
+
+    # Validate and set defaults
+    config.setdefault("base_dir", str(USER_CONFIG_DIR))
+    config.setdefault("build_logs_dir", os.path.join(config["base_dir"], "builds"))
+    config.setdefault(
+        "remote_build_logs_dir", os.path.join(config["base_dir"], "remote_builds")
+    )
+    config.setdefault("branch", "Sisyphus")
+    config.setdefault("arch", "x86_64")
+    config.setdefault("mirror", "http://ftp.altlinux.org/pub/distributions")
+    config.setdefault("packager", f"{os.getlogin()} <{os.getlogin()}@altlinux.org>")
+    config.setdefault(
+        "logging",
+        {
+            "level": "INFO",
+            "file_level": "DEBUG",
+            "rotation": "10 MB",
+            "format": "{time} | {level} | {message}",
+        },
+    )
+
+    # Validate logging configuration
+    valid_levels = ["TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"]
+    if config["logging"]["level"] not in valid_levels:
+        raise ConfigError(f"Invalid logging level: {config['logging']['level']}")
+    if config["logging"]["file_level"] not in valid_levels:
+        raise ConfigError(
+            f"Invalid file logging level: {config['logging']['file_level']}"
+        )
+
+    # Ensure directories are writable
+    for key in ["base_dir", "build_logs_dir", "remote_build_logs_dir"]:
+        dir_path = os.path.abspath(config[key])
+        os.makedirs(dir_path, exist_ok=True)
+        if not os.access(dir_path, os.W_OK):
+            raise ConfigError(f"Directory {dir_path} is not writable")
+        config[key] = dir_path
+
+    return config
+
+
+def get_sandbox_config(sandbox_name, config):
+    """Get configuration specific to a sandbox."""
+    defaults = {
+        "branch": config["branch"],
+        "arch": config["arch"],
+        "mirror": config["mirror"],
+        "packager": config["packager"],
+        "base_dir": config["base_dir"],
+        "build_logs_dir": config["build_logs_dir"],
+    }
+    sandbox_config = config.get("sandboxes", {}).get(sandbox_name, {})
+    defaults.update(sandbox_config)
+    return defaults
+
+
+class ConfigError(Exception):
+    pass
+altbuilder/exceptions.py
+
+===== altbuilder/exceptions.py =====
+class AltBuilderError(Exception):
+    """Base exception for altbuilder errors."""
+    pass
+
+class ConfigError(AltBuilderError):
+    """Raised for configuration-related errors."""
+    pass
+
+class ToolError(AltBuilderError):
+    """Raised for errors interacting with external tools."""
+    pass
+
+class BuildError(AltBuilderError):
+    """Raised for build process errors."""
+    pass
+
+class EnvironmentError(AltBuilderError):
+    """Raised for sandbox environment errors."""
+    pass
+bin/altbuilder
+
+===== bin/altbuilder =====
+#!/usr/bin/env python3
+# bin/altbuilder
+from altbuilder.cli import cli
+cli()
+config/default_config.yaml
+
+===== config/default_config.yaml =====
+branch: Sisyphus
+arch: x86_64
+mirror: http://ftp.altlinux.org/pub/distributions
+packager: "User <user@altlinux.org>"
+sandboxes:
+  Sisyphus-x86_64:
+    mirror: http://ftp.altlinux.org/pub/distributions
+logging:
+  level: ERROR
+  file_level: DEBUG
+  rotation: 10 MB
+  format: "{time} | {level} | {message}"
+tests/__init__.py
+Пропущен(bin): tests/__init__.py
+README.md
+Пропущен(bin): README.md
+setup.py
+
+===== setup.py =====
+from setuptools import setup, find_packages
+
+setup(
+    name="altbuilder",
+    version="0.2.0",
+    packages=find_packages(),
+    install_requires=['loguru', 'pyyaml', 'click'],
+    entry_points={'console_scripts': ['altbuilder = altbuilder.cli:cli']},
+    package_data={'altbuilder': ['config/default_config.yaml']},
+)
+requirements.txt
+
+===== requirements.txt =====
+loguru
+pyyaml
+click
+altbuilder.egg-info/PKG-INFO
+
+===== altbuilder.egg-info/PKG-INFO =====
+Metadata-Version: 2.2
+Name: altbuilder
+Version: 2.0
+Requires-Dist: loguru
+Requires-Dist: pyyaml
+Requires-Dist: click
+Dynamic: requires-dist
+altbuilder.egg-info/dependency_links.txt
+Пропущен(bin): altbuilder.egg-info/dependency_links.txt
+altbuilder.egg-info/entry_points.txt
+
+===== altbuilder.egg-info/entry_points.txt =====
+[console_scripts]
+altbuilder = altbuilder.cli:cli
+altbuilder.egg-info/requires.txt
+
+===== altbuilder.egg-info/requires.txt =====
+loguru
+pyyaml
+click
+altbuilder.egg-info/top_level.txt
+
+===== altbuilder.egg-info/top_level.txt =====
+altbuilder
+tests
+altbuilder.egg-info/SOURCES.txt
+
+===== altbuilder.egg-info/SOURCES.txt =====
+MANIFEST.in
+README.md
+setup.py
+altbuilder/__init__.py
+altbuilder/cli.py
+altbuilder/config.py
+altbuilder/exceptions.py
+altbuilder.egg-info/PKG-INFO
+altbuilder.egg-info/SOURCES.txt
+altbuilder.egg-info/dependency_links.txt
+altbuilder.egg-info/entry_points.txt
+altbuilder.egg-info/requires.txt
+altbuilder.egg-info/top_level.txt
+altbuilder/adapters/__init__.py
+altbuilder/adapters/apt_repo.py
+altbuilder/adapters/base.py
+altbuilder/adapters/gear.py
+altbuilder/adapters/hasher.py
+altbuilder/core/__init__.py
+altbuilder/core/build_manager.py
+altbuilder/core/dependency_resolver.py
+altbuilder/core/environment.py
+altbuilder/core/repo_manager.py
+altbuilder/utils/__init__.py
+altbuilder/utils/helpers.py
+altbuilder/utils/logger.py
+altbuilder/utils/metrics.py
+tests/__init__.py
+tests/test_adapters.py
+tests/test_core.py
+tests/test_utils.py.gitignore
+
+===== .gitignore =====
+__pycache__
+*.egg-info
+*.log
+builds/tracking/
