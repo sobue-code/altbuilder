@@ -1,12 +1,14 @@
 import os
 from pathlib import Path
-import yaml
+import tomli
+
+# import tomllib as tomli
 from .utils.logger import logger
 from .exceptions import ConfigError
 
 USER_CONFIG_DIR = Path.home() / ".altbuilder"
-USER_CONFIG_FILE = USER_CONFIG_DIR / "config.yaml"
-DEFAULT_CONFIG_FILE = Path(__file__).parent.parent / "config" / "default_config.yaml"
+USER_CONFIG_FILE = USER_CONFIG_DIR / "config.toml"
+DEFAULT_CONFIG_FILE = Path(__file__).parent.parent / "config" / "default_config.toml"
 
 
 def load_config(config_file=None):
@@ -15,16 +17,16 @@ def load_config(config_file=None):
     config_file = Path(config_file or USER_CONFIG_FILE)
     if config_file.exists():
         try:
-            with open(config_file, "r") as f:
-                config = yaml.safe_load(f) or {}
+            with open(config_file, "rb") as f:
+                config = tomli.load(f) or {}
             config["config_file"] = str(config_file)
         except Exception as e:
             logger.error(f"Failed to load {config_file}: {e}")
             raise ConfigError(f"Invalid configuration file: {e}")
     else:
         try:
-            with open(DEFAULT_CONFIG_FILE, "r") as f:
-                config = yaml.safe_load(f) or {}
+            with open(DEFAULT_CONFIG_FILE, "rb") as f:
+                config = tomli.load(f) or {}
             config["config_file"] = str(DEFAULT_CONFIG_FILE)
         except Exception as e:
             logger.error(f"Failed to load default config: {e}")
