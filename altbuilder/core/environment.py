@@ -6,6 +6,7 @@ from datetime import datetime
 from ..exceptions import EnvironmentError
 from ..utils.logger import logger
 from ..utils.helpers import get_host_arch, run_logged_command
+from ..utils.generate_sources_list import generate_sources_list
 from ..adapters.hasher import HasherAdapter
 
 
@@ -25,28 +26,9 @@ class Environment:
 
     def _generate_sources_list(self):
         """Generate sources.list based on branch, architecture and task_id."""
-        lines = []
-        mirror = self.config.get("mirror", "http://ftp.altlinux.org/pub/distributions")
-        branch = self.config.get("branch", "Sisyphus")
-        arch = self.config.get("arch", "x86_64")
-        if mirror.startswith("file://"):
-            lines.append(f"rpm {mirror}/{branch.lower()}/last {arch} classic")
-            lines.append(f"rpm {mirror}/{branch.lower()}/last noarch classic")
-            if arch == "x86_64":
-                lines.append(f"rpm {mirror}/{branch.lower()}/last {arch}-i586 classic")
-        else:
-            lines.append(f"rpm [alt] {mirror} ALTLinux/{branch}/{arch} classic")
-            lines.append(f"rpm [alt] {mirror} ALTLinux/{branch}/noarch classic")
-            if arch == "x86_64":
-                lines.append(
-                    f"rpm [alt] {mirror} ALTLinux/{branch}/{arch}-i586 classic"
-                )
-        if self.task_id:
-            mirror_task = self.config.get("mirror_task", "http://git.altlinux.org")
-            lines.append(f"rpm {mirror_task} repo/{self.task_id}/{arch} task")
-            logger.info(f"Added task repository for task_id={self.task_id}")
-        else:
-            logger.debug("No task_id provided, skipping task repository")
+        lines = generate_sources_list(
+            self.config["branch"], self.config["arch"], self.task_id, self.config
+        )
         with open(self.sources_list, "w") as f:
             f.write("\n".join(lines))
 
@@ -215,7 +197,7 @@ APT::Architecture "{self.config['arch']}";
 
             process = subprocess.run(
                 cmd,
-                input=f"echo 'nameserver {dns}' > /etc/resolv.conf\nexit\n".encode(),
+                input=f"echo 'nameserver {dns}' > /etc/resolv.conf\nexit\n",  # Remove .encode()
                 check=True,
                 capture_output=True,
                 text=True,

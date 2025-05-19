@@ -42,6 +42,7 @@ def load_config(config_file=None):
     config.setdefault("branch", "Sisyphus")
     config.setdefault("arch", "x86_64")
     config.setdefault("mirror", "http://ftp.altlinux.org/pub/distributions")
+    config.setdefault("mirror_task", "http://git.altlinux.org")
     config.setdefault("packager", f"{os.getlogin()} <{os.getlogin()}@altlinux.org>")
     config.setdefault(
         "logging",
@@ -73,19 +74,20 @@ def load_config(config_file=None):
     return config
 
 
-def get_sandbox_config(sandbox_name, config):
+def get_sandbox_config(sandbox_name, config, branch=None, arch=None):
     """Get configuration specific to a sandbox."""
     defaults = {
-        "branch": config["branch"],
-        "arch": config["arch"],
+        "branch": branch or config["branch"],
+        "arch": arch or config["arch"],
         "mirror": config["mirror"],
         "packager": config["packager"],
         "base_dir": config["base_dir"],
         "environment_dir": config["environment_dir"],
         "build_logs_dir": config["build_logs_dir"],
     }
-    sandbox_config = config.get("sandboxes", {}).get(sandbox_name, {})
-    defaults.update(sandbox_config)
+    if not branch and not arch:
+        sandbox_config = config.get("sandboxes", {}).get(sandbox_name, {})
+        defaults.update(sandbox_config)
     return defaults
 
 
