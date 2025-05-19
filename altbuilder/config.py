@@ -34,7 +34,10 @@ def load_config(config_file=None):
 
     # Validate and set defaults
     config.setdefault("base_dir", str(USER_CONFIG_DIR))
-    config.setdefault("environment_dir", os.path.join(config["environment_dir"]))
+    config.setdefault(
+        "environment_dir",
+        config.get("environment_dir", os.path.join(config["base_dir"], "environments")),
+    )
     config.setdefault("build_logs_dir", os.path.join(config["base_dir"], "builds"))
     config.setdefault("branch", "Sisyphus")
     config.setdefault("arch", "x86_64")
