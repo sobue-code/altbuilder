@@ -24,6 +24,9 @@ def shell_cmd(sandbox, root, internet):
     sandbox_config = get_sandbox_config(sandbox_name, config)
     init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
     env = Environment(sandbox_name, sandbox_config)
+    if not env.exists():
+        click.echo(colorize(f"Sandbox {sandbox_name} does not exist.", color="red"))
+        return
     click.echo(colorize(f"Entering shell for sandbox: {sandbox_name}", bold=True))
     try:
         env.shell(root, internet)

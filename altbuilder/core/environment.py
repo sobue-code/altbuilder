@@ -1,4 +1,5 @@
 import os
+import json
 import shutil
 import subprocess
 import time
@@ -14,6 +15,8 @@ class Environment:
     def __init__(self, name, config, task_id=None, adapter=None):
         self.name = name
         self.config = config
+        self.branch = config["branch"]
+        self.arch = config["arch"]
         self.task_id = task_id
         self.environment_dir = os.path.join(
             config["environment_dir"], ".sandboxes", name
@@ -23,12 +26,46 @@ class Environment:
         self.sources_list = os.path.join(self.environment_dir, "sources.list")
         self.priorities = os.path.join(self.environment_dir, "priorities")
         self.adapter = adapter or HasherAdapter()
+        self.info_file = os.path.join(
+            self.environment_dir, "hasher", "sandbox_info.json"
+        )
+
+    def serialize(self):
+        """Save sandbox info to JSON next to hasher."""
+        info = {
+            "name": self.name,
+            "branch": self.branch,
+            "arch": self.arch,
+            "task_id": self.task_id,
+            "config": self.config,
+        }
+        os.makedirs(os.path.dirname(self.info_file), exist_ok=True)
+        with open(self.info_file, "w") as f:
+            json.dump(info, f, indent=2)
+        logger.info(f"Sandbox info saved to {self.info_file}")
+
+    def get_info(self):
+        """Reads and returns sandbox info from JSON."""
+        if not os.path.exists(self.info_file):
+            raise EnvironmentError(f"Sandbox info file not found: {self.info_file}")
+        with open(self.info_file, "r") as f:
+            return json.load(f)
+
+    @classmethod
+    def from_info_file(cls, info_file, adapter=None):
+        """Creates Environment object from sandbox_info.json file"""
+        with open(info_file, "r") as f:
+            info = json.load(f)
+        return cls(
+            name=info["name"],
+            config=info["config"],
+            task_id=info.get("task_id"),
+            adapter=adapter,
+        )
 
     def _generate_sources_list(self):
         """Generate sources.list based on branch, architecture and task_id."""
-        lines = generate_sources_list(
-            self.config["branch"], self.config["arch"], self.task_id, self.config
-        )
+        lines = generate_sources_list(self.branch, self.arch, self.task_id, self.config)
         with open(self.sources_list, "w") as f:
             f.write("\n".join(lines))
 
@@ -113,6 +150,7 @@ APT::Architecture "{self.config['arch']}";
             cmd += [f'--target={self.config["arch"]}']
         cmd.append(self.hasher_dir)
         run_logged_command(cmd, check=True, real_time=True, log_file=init_log)
+        self.serialize()
         logger.info(f"Sandbox initialization logs saved to: {log_dir}")
 
     def exists(self):

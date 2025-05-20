@@ -64,6 +64,11 @@ def clean_cmd(sandbox, all):
         init_logger(sandbox_name, config["build_logs_dir"], config)
         env = Environment(sandbox_name, sandbox_config)
         try:
+            if not env.exists():
+                click.echo(
+                    colorize(f"Sandbox {sandbox_name} does not exist.", color="red")
+                )
+                return
             cmd = ["hsh", "--cleanup-only", env.hasher_dir]
             run_logged_command(cmd, check=True)
             env.clean()
