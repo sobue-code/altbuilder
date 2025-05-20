@@ -33,10 +33,13 @@ def colorize(text, color=None, bold=False):
     return f"{color_code}{bold_code}{text}{reset}"
 
 
-def run_logged_command(cmd, check=True, real_time=True, log_file=None, **kwargs):
+def run_logged_command(
+    cmd, check=True, real_time=True, log_file=None, quiet=False, **kwargs
+):
     """
     Run a command, log its execution, and capture output.
     With real_time=True, the output is displayed in real-time.
+    With quiet=True, suppresses logging of individual output lines to DEBUG.
     """
     cmd_str = " ".join(cmd)
     logger.debug(f"Executing command: {cmd_str}")
@@ -66,8 +69,12 @@ def run_logged_command(cmd, check=True, real_time=True, log_file=None, **kwargs)
             if line:
                 line = line.rstrip()
                 output_lines.append(line)
-                print(line)
-                cmd_logger().debug(line)
+                print(line)  # Always print to console
+
+                # Only log to DEBUG if not in quiet mode
+                if not quiet:
+                    cmd_logger().debug(line)
+
                 if output_file:
                     output_file.write(f"{line}\n")
                     output_file.flush()  # Ensure writing in real-time
@@ -93,9 +100,9 @@ def run_logged_command(cmd, check=True, real_time=True, log_file=None, **kwargs)
             result = subprocess.run(
                 cmd, check=check, text=True, capture_output=True, **kwargs
             )
-            if result.stdout:
+            if result.stdout and not quiet:
                 logger.debug(f"Command output: {result.stdout.strip()}")
-            if result.stderr:
+            if result.stderr and not quiet:
                 logger.debug(f"Command stderr: {result.stderr.strip()}")
             return result
         except subprocess.CalledProcessError as e:

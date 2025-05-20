@@ -50,3 +50,9 @@ class HasherAdapter(ToolAdapter):
         cmd.append(workdir)
         logger.info(f"Launching interactive shell: {' '.join(cmd)}")
         os.execvp(cmd[0], cmd)
+
+    def install(self, workdir, *packages):
+        """Installs packages in the sandbox."""
+        cmd = ["hsh-install", workdir] + list(packages)
+        run_logged_command(cmd, check=True)
+        logger.info(f"Packages installed in sandbox {self.name}")

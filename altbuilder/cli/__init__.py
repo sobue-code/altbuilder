@@ -5,6 +5,8 @@ from .list_cmd import list_cmd
 from .shell_cmd import shell_cmd
 from .clean_cmd import clean_cmd
 from .config_cmd import config_cmd
+from .install_cmd import install_cmd
+from .run_cmd import run_cmd
 from ..config import load_config
 from ..utils.logger import init_logger, logger
 
@@ -32,6 +34,8 @@ cli.add_command(list_cmd)
 cli.add_command(shell_cmd)
 cli.add_command(clean_cmd)
 cli.add_command(config_cmd)
+cli.add_command(install_cmd)
+cli.add_command(run_cmd)
 
 
 if __name__ == "__main__":

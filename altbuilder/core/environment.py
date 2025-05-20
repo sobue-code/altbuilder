@@ -197,7 +197,7 @@ APT::Architecture "{self.config['arch']}";
 
             process = subprocess.run(
                 cmd,
-                input=f"echo 'nameserver {dns}' > /etc/resolv.conf\nexit\n",  # Remove .encode()
+                input=f"echo 'nameserver {dns}' > /etc/resolv.conf\nexit\n",
                 check=True,
                 capture_output=True,
                 text=True,
@@ -222,3 +222,33 @@ APT::Architecture "{self.config['arch']}";
 
         logger.info(f"Internet enabled in sandbox {self.name} with DNS: {dns}")
         logger.info(f"Internet configuration logs saved to: {log_dir}")
+
+    def install(self, packages):
+        """Installs packages into the sandbox."""
+        if not self.exists():
+            logger.error(f"Sandbox {self.name} does not exist.")
+            raise FileNotFoundError(f"Sandbox {self.name} does not exist.")
+        cmd = [
+            "hsh-install",
+            self.hasher_dir,
+        ] + list(packages)
+        run_logged_command(cmd, check=True)
+        logger.info(f"Packages installed in sandbox {self.name}")
+
+    def run(self, command):
+        """Executes a command inside the sandbox."""
+        if not self.exists():
+            logger.error(f"Sandbox {self.name} does not exist.")
+            raise FileNotFoundError(f"Sandbox {self.name} does not exist.")
+
+        import shlex
+
+        logger.info(f"Running command '{command}' in sandbox {self.name}")
+
+        command_parts = shlex.split(command)
+
+        cmd = ["hsh-run", "--mountpoints=/proc", self.hasher_dir, "--"] + command_parts
+
+        run_logged_command(cmd, check=True, quiet=True)
+
+        logger.info(f"Command executed in sandbox {self.name}")
