@@ -9,7 +9,7 @@ class GearAdapter(ToolAdapter):
     def run_command(self, cmd, log_file=None, **kwargs):
         logger.info(f"Running gear command: {' '.join(cmd)}")
         return run_logged_command(
-            cmd, check=True, real_time=True, log_file=log_file, **kwargs
+            cmd, check=True, real_time=True, log_file=log_file, quiet=True, **kwargs
         )
 
     def build(self, workdir, hasher_args, build_log_dir=None):

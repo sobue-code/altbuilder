@@ -7,6 +7,8 @@ from .clean_cmd import clean_cmd
 from .config_cmd import config_cmd
 from .install_cmd import install_cmd
 from .run_cmd import run_cmd
+from .auxiliary_cmd import copy_pyproject_deps, rust_update_vendor
+from .copy_cmd import copy_group
 from ..config import load_config
 from ..utils.logger import init_logger, logger
 
@@ -36,6 +38,9 @@ cli.add_command(clean_cmd)
 cli.add_command(config_cmd)
 cli.add_command(install_cmd)
 cli.add_command(run_cmd)
+cli.add_command(copy_pyproject_deps)
+cli.add_command(rust_update_vendor)
+cli.add_command(copy_group)
 
 
 if __name__ == "__main__":

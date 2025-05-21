@@ -123,6 +123,7 @@ APT::Architecture "{self.config['arch']}";
         init_log = os.path.join(log_dir, "init.log")
 
         if os.path.exists(self.environment_dir):
+            self.clean(log_dir=log_dir)
             logger.debug(f"Removing existing sandbox directory {self.environment_dir}")
             shutil.rmtree(self.environment_dir)
         os.makedirs(self.hasher_dir, exist_ok=True)
@@ -288,3 +289,113 @@ APT::Architecture "{self.config['arch']}";
         run_logged_command(cmd, check=True, quiet=True)
 
         logger.info(f"Command executed in sandbox {self.name}")
+
+    def copy_to(self, src: str, dst: str):
+        """Copy files from the host into the sandbox.
+
+        Args:
+            src (str): Path to the source file or directory on the host.
+            dst (str): Path inside the sandbox where the file or directory will be copied.
+        """
+        if not self.exists():
+            raise EnvironmentError(f"Sandbox {self.name} does not exist.")
+
+        logger.info(f"Copying {src} to {dst} in sandbox {self.name}")
+        try:
+            # Use hsh-copy to transfer files into the sandbox
+            subprocess.run(
+                ["hsh-copy", "--workdir", self.hasher_dir, src, dst],
+                check=True,
+            )
+            logger.info(f"Successfully copied {src} to {dst} in sandbox {self.name}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to copy {src} to {dst}: {e}")
+            raise EnvironmentError(f"Failed to copy {src} to {dst}: {e}")
+
+    def copy_from(self, src: str, dst: str):
+        """Copy files or directories from the sandbox to the host.
+
+        Args:
+            src (str): Path inside the sandbox to the file or directory to copy.
+            dst (str): Path on the host where the file or directory will be copied.
+        """
+        if not self.exists():
+            raise EnvironmentError(f"Sandbox {self.name} does not exist.")
+
+        exchange_dir = os.path.join(self.environment_dir, "exchange")
+        mount_point = "/exchange"
+        os.makedirs(exchange_dir, exist_ok=True)
+
+        env = os.environ.copy()
+        env["share_mount"] = "yes"
+
+        try:
+            # Check if the source is a directory
+            is_dir_proc = subprocess.run(
+                [
+                    "hsh-run",
+                    "--mountpoints=/proc",
+                    self.hasher_dir,
+                    "--",
+                    "test",
+                    "-d",
+                    src,
+                ],
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            is_dir = is_dir_proc.returncode == 0
+
+            if is_dir:
+                # Copy directory using tar to preserve structure
+                os.makedirs(dst, exist_ok=True)
+                proc = subprocess.Popen(
+                    [
+                        "hsh-run",
+                        f"--mount={exchange_dir}:{mount_point}",
+                        "--mountpoints=/proc",
+                        self.hasher_dir,
+                        "--",
+                        "tar",
+                        "-C",
+                        src,
+                        "-cf",
+                        "-",
+                        ".",
+                    ],
+                    stdout=subprocess.PIPE,
+                    env=env,
+                )
+                extract = subprocess.run(
+                    ["tar", "-C", dst, "-xf", "-"], stdin=proc.stdout
+                )
+                proc.wait()
+                if proc.returncode != 0:
+                    raise subprocess.CalledProcessError(proc.returncode, proc.args)
+            else:
+                # Copy single file
+                subprocess.run(
+                    [
+                        "hsh-run",
+                        f"--mount={exchange_dir}:{mount_point}",
+                        "--mountpoints=/proc",
+                        self.hasher_dir,
+                        "--",
+                        "cp",
+                        "-a",
+                        src,
+                        f"{mount_point}/",
+                    ],
+                    check=True,
+                    env=env,
+                )
+                shutil.move(os.path.join(exchange_dir, os.path.basename(src)), dst)
+
+            logger.info(f"Successfully copied {src} from sandbox {self.name} to {dst}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to copy {src} from sandbox to host: {e}")
+            raise EnvironmentError(f"Failed to copy {src} from sandbox to host: {e}")
+        finally:
+            # Clean up the exchange directory
+            shutil.rmtree(exchange_dir, ignore_errors=True)
