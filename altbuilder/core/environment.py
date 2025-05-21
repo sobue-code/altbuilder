@@ -2,12 +2,9 @@ import os
 import json
 import shutil
 import subprocess
-import time
 from datetime import datetime
 from ..exceptions import EnvironmentError
-from ..utils.logger import logger
-from ..utils.helpers import get_host_arch, run_logged_command
-from ..utils.generate_sources_list import generate_sources_list
+from ..utils import logger, get_host_arch, run_logged_command, generate_sources_list
 from ..adapters.hasher import HasherAdapter
 
 
@@ -18,9 +15,7 @@ class Environment:
         self.branch = config["branch"]
         self.arch = config["arch"]
         self.task_id = task_id
-        self.environment_dir = os.path.join(
-            config["environment_dir"], ".sandboxes", name
-        )
+        self.environment_dir = os.path.join(config["environment_dir"], name)
         self.hasher_dir = os.path.join(self.environment_dir, "hasher")
         self.apt_conf = os.path.join(self.environment_dir, "apt.conf")
         self.sources_list = os.path.join(self.environment_dir, "sources.list")
@@ -63,6 +58,14 @@ class Environment:
             adapter=adapter,
         )
 
+    def is_partially_initialized(self):
+        """Check if the sandbox directory exists but is not fully initialized."""
+        return os.path.isdir(self.environment_dir) and not self.exists()
+
+    def exists(self):
+        """Check if the sandbox is fully initialized."""
+        return os.path.exists(os.path.join(self.hasher_dir, "sandbox_info.json"))
+
     def _generate_sources_list(self):
         """Generate sources.list based on branch, architecture and task_id."""
         lines = generate_sources_list(self.branch, self.arch, self.task_id, self.config)
@@ -88,8 +91,7 @@ apt
 
     def _generate_apt_conf(self):
         """Generate apt.conf file with links to sources.list and priorities."""
-        conf = f"""
-Dir::Etc::main "/dev/null";
+        conf = f"""Dir::Etc::main "/dev/null";
 Dir::Etc::parts "/var/empty";
 Dir::Etc::sourcelist "{self.sources_list}";
 Dir::Etc::pkgpriorities "{self.priorities}";
@@ -152,10 +154,6 @@ APT::Architecture "{self.config['arch']}";
         run_logged_command(cmd, check=True, real_time=True, log_file=init_log)
         self.serialize()
         logger.info(f"Sandbox initialization logs saved to: {log_dir}")
-
-    def exists(self):
-        """Check if the sandbox exists."""
-        return os.path.exists(os.path.join(self.hasher_dir, "chroot"))
 
     def clean(self, log_dir=None):
         """Remove the sandbox directory and its contents."""

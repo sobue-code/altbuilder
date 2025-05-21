@@ -2,13 +2,10 @@ import os
 import getpass
 import subprocess
 import click
-import tomli
 import tomli_w
-from pathlib import Path
-from ..config import load_config, USER_CONFIG_DIR, USER_CONFIG_FILE, DEFAULT_CONFIG_FILE
-from ..utils.logger import logger
-from ..utils.helpers import colorize
+from ..config import load_config, USER_CONFIG_DIR, USER_CONFIG_FILE
 from ..exceptions import ConfigError
+from ..utils import logger, colorize
 
 
 def display_config(config):

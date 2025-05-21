@@ -1,11 +1,9 @@
 import os
-import json
 import click
-from ..config import load_config, get_sandbox_config
-from ..core.environment import Environment
+from ..config import load_config
 from ..core.build_manager import BuildManager
-from ..utils.logger import init_logger, logger
-from ..utils.helpers import colorize
+from ..utils import init_logger, colorize
+from ..utils.setup_sandbox import setup_sandbox
 
 
 @click.command("build")
@@ -33,61 +31,17 @@ def build_cmd(source_dir, arch, branch, reinit, sandbox):
     """Build a package in the specified sandbox."""
     config = load_config()
 
-    if sandbox:
-        sandbox_name = sandbox
-    elif branch and arch:
-        sandbox_name = f"{branch}-{arch}"
-    else:
-        sandbox_name = f"{config['branch']}-{config['arch']}"
+    # Set up sandbox environment
+    env = setup_sandbox(sandbox, branch, arch, reinit, config)
 
-    # Sandbox info file
-    sandbox_info_file = os.path.join(
-        config["environment_dir"],
-        ".sandboxes",
-        sandbox_name,
-        "hasher",
-        "sandbox_info.json",
-    )
-
-    # Get existing sandbox info
-    existing_info = None
-    if os.path.exists(sandbox_info_file):
-        try:
-            existing_info = Environment.from_info_file(sandbox_info_file)
-        except Exception as e:
-            existing_info = None
-
-    branch = branch or (existing_info.branch if existing_info else None)
-    arch = arch or (existing_info.arch if existing_info else None)
-    task_id = existing_info.task_id if existing_info else None
-
-    # Sandbox config
-    sandbox_config = get_sandbox_config(sandbox_name, config, branch=branch, arch=arch)
-    init_logger(sandbox_name, config["build_logs_dir"], config)
-    env = Environment(sandbox_name, sandbox_config, task_id=task_id)
-
-    if reinit or not env.exists():
-        click.echo(
-            colorize(
-                f"Initializing sandbox: {sandbox_name} [{branch}-{arch}]",
-                bold=True,
-            )
-        )
-        if not branch or not arch:
-            click.echo(
-                colorize("Error: --branch and --arch are required.", color="red")
-            )
-            return
-        if env.exists():
-            env.clean()
-        env.init()
-
+    # Proceed with build
     builder = BuildManager(env)
-    click.echo(colorize(f"Building in sandbox: {sandbox_name}", bold=True))
 
     # Get package name for logging purposes
     package_name = os.path.basename(os.path.abspath(source_dir or os.getcwd()))
-    log_dir = os.path.join(config["build_logs_dir"], sandbox_name, package_name)
+
+    click.echo(colorize(f"Building {package_name} in sandbox: {env.name}", bold=True))
+    log_dir = os.path.join(config["build_logs_dir"], env.name, package_name)
 
     # Create build-specific log directory
     build_number = 1
@@ -99,12 +53,9 @@ def build_cmd(source_dir, arch, branch, reinit, sandbox):
     # Setup build-specific logger
     build_log = os.path.join(build_log_dir, "build.log")
     cmd_log = os.path.join(build_log_dir, "commands.log")
+    init_logger(env.name, build_log_dir, config, build_log=build_log, cmd_log=cmd_log)
 
-    # Save current logger handlers and configure build-specific logging
-    init_logger(
-        sandbox_name, build_log_dir, config, build_log=build_log, cmd_log=cmd_log
-    )
-
+    # Perform the build
     builder.build(source_dir, env.apt_conf, build_log_dir=build_log_dir)
-    click.echo(colorize(f"Build completed in sandbox {sandbox_name}.", color="green"))
+    click.echo(colorize(f"Build completed in sandbox {env.name}.", color="green"))
     click.echo(colorize(f"Build logs available at: {build_log_dir}", color="cyan"))

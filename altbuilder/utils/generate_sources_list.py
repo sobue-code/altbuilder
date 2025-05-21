@@ -19,10 +19,14 @@ def generate_sources_list(
         if arch == "x86_64":
             lines.append(f"rpm [alt] {mirror} ALTLinux/{branch}/{arch}-i586 classic")
     elif branch.startswith("p") and branch[1:].isdigit():
-        lines.append(f"rpm {mirror}/ALTLinux {branch}/branch/{arch} classic")
-        lines.append(f"rpm {mirror}/ALTLinux {branch}/branch/noarch classic")
+        lines.append(
+            f"rpm [{branch}] {mirror}/ALTLinux {branch}/branch/{arch} classic gostcrypto"
+        )
         if arch == "x86_64":
-            lines.append(f"rpm {mirror}/ALTLinux {branch}/branch/{arch}-i586 classic")
+            lines.append(
+                f"rpm [{branch}] {mirror}/ALTLinux {branch}/branch/{arch}-i586 classic"
+            )
+        lines.append(f"rpm [{branch}] {mirror}/ALTLinux {branch}/branch/noarch classic")
     else:
         raise ValueError(f"Unsupported branch name: {branch}")
 

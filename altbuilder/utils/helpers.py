@@ -1,36 +1,12 @@
-import subprocess
-import platform
 import os
-import time
-import sys
+import platform
+import subprocess
+import shutil
 from .logger import logger, cmd_logger
 
 
 def get_host_arch():
-    machine = platform.machine()
-    if machine in ["x86_64", "amd64"]:
-        return "x86_64"
-    elif machine in ["i386", "i686"]:
-        return "i586"
-    elif machine == "arm":
-        return "armh"
-    elif machine == "aarch64":
-        return "aarch64"
-    else:
-        return machine
-
-
-def colorize(text, color=None, bold=False):
-    colors = {
-        "red": "\033[31m",
-        "green": "\033[32m",
-        "yellow": "\033[33m",
-        "cyan": "\033[36m",
-    }
-    reset = "\033[0m"
-    bold_code = "\033[1m" if bold else ""
-    color_code = colors.get(color, "")
-    return f"{color_code}{bold_code}{text}{reset}"
+    return platform.machine()
 
 
 def run_logged_command(
@@ -108,3 +84,32 @@ def run_logged_command(
         except subprocess.CalledProcessError as e:
             logger.error(f"Command failed with exit code {e.returncode}: {e.stderr}")
             raise
+
+
+def open_with_file_manager(path, file_manager=None):
+    # Use MC, ranger, or default to MC if not specified and available
+    cmd = []
+    if not file_manager:
+        file_manager = os.environ.get("ALTBUILDER_FILE_MANAGER")
+        if not file_manager or not shutil.which(file_manager):
+            file_manager = shutil.which("mc")
+    if not file_manager:
+        # Try to auto-detect
+        if shutil.which("mc"):
+            file_manager = "mc"
+        else:
+            file_manager = None
+
+    if not file_manager:
+        click.echo(
+            colorize("No file manager (mc or ranger) found in PATH.", color="red")
+        )
+        return
+
+    cmd = [file_manager, path]
+    try:
+        subprocess.run(cmd, check=True)
+    except Exception as e:
+        click.echo(
+            colorize(f"Failed to open {path} with {file_manager}: {e}", color="red")
+        )

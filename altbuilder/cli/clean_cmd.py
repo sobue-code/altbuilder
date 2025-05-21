@@ -4,8 +4,7 @@ import subprocess
 import click
 from ..config import load_config, get_sandbox_config
 from ..core.environment import Environment
-from ..utils.logger import init_logger, logger
-from ..utils.helpers import colorize, run_logged_command
+from ..utils import init_logger, logger, colorize, run_logged_command
 
 
 @click.command("clean")
@@ -20,24 +19,23 @@ def clean_cmd(sandbox, all):
     """Clean the specified sandbox or all sandboxes."""
     config = load_config()
     environment_dir = config["environment_dir"]
-    sandboxes_dir = os.path.join(environment_dir, ".sandboxes")
-    logger.debug(f"Cleaning or all sandboxes in {sandboxes_dir}")
-    logger.debug(f"{os.listdir(sandboxes_dir)}")
+    logger.debug(f"Cleaning or all sandboxes in {environment_dir}")
+    logger.debug(f"{os.listdir(environment_dir)}")
 
     if all:
         logger.info("Cleaning all sandboxes")
-        if not os.path.exists(sandboxes_dir):
+        if not os.path.exists(environment_dir):
             click.echo(colorize("No sandboxes to clean.", color="yellow"))
             logger.info("No sandboxes found")
             return
         sandboxes = [
             d
-            for d in os.listdir(sandboxes_dir)
-            if os.path.isdir(os.path.join(sandboxes_dir, d))
+            for d in os.listdir(environment_dir)
+            if os.path.isdir(os.path.join(environment_dir, d))
         ]
         failed = []
         for sandbox in sandboxes:
-            sandbox_path = os.path.join(sandboxes_dir, sandbox)
+            sandbox_path = os.path.join(environment_dir, sandbox)
             cmd = ["hsh", "--cleanup-only", sandbox_path + "/hasher"]
             try:
                 run_logged_command(cmd, check=True)
@@ -65,6 +63,15 @@ def clean_cmd(sandbox, all):
         env = Environment(sandbox_name, sandbox_config)
         try:
             if not env.exists():
+                if env.is_partially_initialized():
+                    click.echo(
+                        colorize(
+                            f"Sandbox {sandbox_name} exists but is not fully initialized. Cleaning ...",
+                            color="yellow",
+                        )
+                    )
+                    env.clean()
+                    return
                 click.echo(
                     colorize(f"Sandbox {sandbox_name} does not exist.", color="red")
                 )

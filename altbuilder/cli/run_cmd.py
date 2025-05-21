@@ -1,16 +1,7 @@
 import click
-import sys
 from ..config import load_config, get_sandbox_config
 from ..core.environment import Environment
-from ..utils.logger import init_logger
-from ..utils.helpers import colorize
-
-import click
-import sys
-from ..config import load_config, get_sandbox_config
-from ..core.environment import Environment
-from ..utils.logger import init_logger
-from ..utils.helpers import colorize
+from ..utils import init_logger, colorize
 
 
 @click.command(
