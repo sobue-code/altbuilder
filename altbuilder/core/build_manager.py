@@ -1,5 +1,4 @@
 import os
-import time
 import shutil
 from datetime import datetime
 from ..exceptions import BuildError
@@ -17,7 +16,14 @@ class BuildManager:
         self.metrics = Metrics()
 
     def build(
-        self, source_dir=None, apt_conf=None, only_srpm=False, build_log_dir=None
+        self,
+        source_dir=None,
+        apt_conf=None,
+        only_srpm=False,
+        build_log_dir=None,
+        no_check=False,
+        hsh_extra="",
+        rpmbuild_extra="",
     ):
         if not self.environment.exists():
             self.environment.init()
@@ -66,9 +72,24 @@ class BuildManager:
             if only_srpm:
                 hasher_args.append("--build-srpm-only")
 
-            # Run the build with the gear adapter, passing the log directory
+            # Inject extra hsh arguments
+            if hsh_extra:
+                import shlex
+
+                hasher_args[1:1] = shlex.split(hsh_extra)
+
+            # Prepare extra rpmbuild args
+            rpmbuild_args = []
+            if rpmbuild_extra:
+                rpmbuild_args.extend(shlex.split(rpmbuild_extra))
+            if no_check:
+                rpmbuild_args.append("--without=check")
+
             self.gear_adapter.build(
-                workdir=source_dir, hasher_args=hasher_args, build_log_dir=build_log_dir
+                workdir=source_dir,
+                hasher_args=hasher_args,
+                build_log_dir=build_log_dir,
+                rpmbuild_args=rpmbuild_args if rpmbuild_args else None,
             )
 
             logger.info(f"Build logs saved to: {build_log_dir}")

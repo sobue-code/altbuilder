@@ -12,9 +12,17 @@ class GearAdapter(ToolAdapter):
             cmd, check=True, real_time=True, log_file=log_file, quiet=True, **kwargs
         )
 
-    def build(self, workdir, hasher_args, build_log_dir=None):
-        cmd = ["gear", "--verbose", "--commit", "--hasher", "--"] + hasher_args
+    def build(self, workdir, hasher_args, build_log_dir=None, rpmbuild_args=None):
         log_file = None
+        if build_log_dir:
+            os.makedirs(build_log_dir, exist_ok=True)
+            log_file = os.path.join(build_log_dir, "gear_build.log")
+
+        cmd = ["gear", "--verbose", "--commit", "--hasher", "--"]
+        cmd.extend(hasher_args)
+        if rpmbuild_args:
+            cmd.extend(["--rpmbuild-args", " ".join(rpmbuild_args)])
+
         if build_log_dir:
             log_file = os.path.join(build_log_dir, "gear_build.log")
         return self.execute(cmd, log_file=log_file, cwd=workdir)

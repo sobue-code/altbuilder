@@ -26,8 +26,21 @@ from ..utils.setup_sandbox import setup_sandbox
 @click.option(
     "--sandbox", "-s", help="Sandbox name. Defaults to <branch>-<arch> from config."
 )
+@click.option(
+    "--no-check",
+    is_flag=True,
+    help="Do not run package tests (rpmbuild --without=check).",
+)
+@click.option("--hsh-extra", default="", help="Extra flags to pass to hsh.")
+@click.option(
+    "--rpmbuild-extra",
+    default="",
+    help="Extra flags to pass to rpmbuild (via --rpmbuild-args).",
+)
 @click.help_option("--help", "-h")
-def build_cmd(source_dir, arch, branch, reinit, sandbox):
+def build_cmd(
+    source_dir, arch, branch, reinit, sandbox, no_check, hsh_extra, rpmbuild_extra
+):
     """Build a package in the specified sandbox."""
     config = load_config()
 
@@ -56,6 +69,13 @@ def build_cmd(source_dir, arch, branch, reinit, sandbox):
     init_logger(env.name, build_log_dir, config, build_log=build_log, cmd_log=cmd_log)
 
     # Perform the build
-    builder.build(source_dir, env.apt_conf, build_log_dir=build_log_dir)
+    builder.build(
+        source_dir,
+        env.apt_conf,
+        build_log_dir=build_log_dir,
+        no_check=no_check,
+        hsh_extra=hsh_extra,
+        rpmbuild_extra=rpmbuild_extra,
+    )
     click.echo(colorize(f"Build completed in sandbox {env.name}.", color="green"))
     click.echo(colorize(f"Build logs available at: {build_log_dir}", color="cyan"))
