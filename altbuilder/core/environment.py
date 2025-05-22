@@ -125,7 +125,11 @@ APT::Architecture "{self.config['arch']}";
         if os.path.exists(self.environment_dir):
             self.clean(log_dir=log_dir)
             logger.debug(f"Removing existing sandbox directory {self.environment_dir}")
-            shutil.rmtree(self.environment_dir)
+            try:
+                shutil.rmtree(self.environment_dir)
+            except FileNotFoundError:
+                logger.warning(f"Directory {self.environment_dir} already removed.")
+
         os.makedirs(self.hasher_dir, exist_ok=True)
         self._generate_config_files()
 
@@ -144,6 +148,7 @@ APT::Architecture "{self.config['arch']}";
                 ["rpm", "-q", "qemu-user-static"],
                 check=True,
                 log_file=os.path.join(log_dir, "qemu_check.log"),
+                quite=True,
             )
             cmd += [
                 f'--with-qemu={self.config["arch"]}',
