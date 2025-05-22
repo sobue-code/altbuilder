@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
 import subprocess
-import os
 from ..exceptions import ToolError
-from ..utils.logger import logger
 
 
 class ToolAdapter(ABC):

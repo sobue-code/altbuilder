@@ -1,5 +1,6 @@
 import os
 import json
+import shlex
 import shutil
 import subprocess
 from datetime import datetime
@@ -282,8 +283,6 @@ APT::Architecture "{self.config['arch']}";
         if not self.exists():
             logger.error(f"Sandbox {self.name} does not exist.")
             raise FileNotFoundError(f"Sandbox {self.name} does not exist.")
-
-        import shlex
 
         logger.info(f"Running command '{command}' in sandbox {self.name}")
 
