@@ -149,7 +149,7 @@ APT::Architecture "{self.config['arch']}";
                 ["rpm", "-q", "qemu-user-static"],
                 check=True,
                 log_file=os.path.join(log_dir, "qemu_check.log"),
-                quite=True,
+                quiet=True,
             )
             cmd += [
                 f'--with-qemu={self.config["arch"]}',

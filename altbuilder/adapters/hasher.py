@@ -41,6 +41,7 @@ class HasherAdapter(ToolAdapter):
 
     def shell(self, workdir, root=False, internet=False):
         cmd = ["hsh-shell"]
+        cmd.append("--mount=/proc")
         if root:
             cmd.append("--rooter")
         if internet:
