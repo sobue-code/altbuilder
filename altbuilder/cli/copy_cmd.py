@@ -9,6 +9,7 @@ from ..utils import init_logger, colorize
     "--sandbox", "-s", help="Sandbox name. Defaults to <branch>-<arch> from config."
 )
 @click.pass_context
+@click.help_option("--help", "-h")
 def copy_group(ctx, sandbox):
     """Copy files or directories between host and sandbox."""
     config = load_config()

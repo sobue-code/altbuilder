@@ -1,9 +1,10 @@
 import click
 from ..config import get_sandbox_config
 from ..core.environment import Environment
-from .logger import init_logger
+from .logger import init_logger, logger
 from .colorize import colorize
 from .get_sandbox_info import get_sandbox_info
+from .check_task_info import fetch_task_info
 
 
 def setup_sandbox(sandbox, branch, arch, reinit, config, task_id=None):
@@ -45,6 +46,21 @@ def setup_sandbox(sandbox, branch, arch, reinit, config, task_id=None):
                 color="red",
             )
         )
+    # Validate task_id if provided
+    if resolved_task_id:
+        task_info = fetch_task_info(task_id, config["rdb_url"])
+        task_branch = task_info.get("branch", "").lower() if task_info else None
+        logger.debug(
+            f"Task {task_id} branch: {task_branch}, expected branch: {branch.lower()}"
+        )
+        if task_branch != branch.lower():
+            click.echo(
+                colorize(
+                    f"Warning: Task {task_id} branch does not match sandbox branch {branch}.",
+                    color="yellow",
+                )
+            )
+            return None
 
     # Configure sandbox and logger
     sandbox_config = get_sandbox_config(sandbox_name, config, branch=branch, arch=arch)

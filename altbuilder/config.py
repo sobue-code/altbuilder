@@ -43,6 +43,7 @@ def load_config(config_file=None):
     config.setdefault("arch", "x86_64")
     config.setdefault("mirror", "http://ftp.altlinux.org/pub/distributions")
     config.setdefault("mirror_task", "http://git.altlinux.org")
+    config.setdefault("rdb_url", "https://rdb.altlinux.org")
     config.setdefault("packager", f"{os.getlogin()} <{os.getlogin()}@altlinux.org>")
     config.setdefault(
         "logging",
@@ -80,6 +81,8 @@ def get_sandbox_config(sandbox_name, config, branch=None, arch=None):
         "branch": branch or config["branch"],
         "arch": arch or config["arch"],
         "mirror": config["mirror"],
+        "mirror_task": config["mirror_task"],
+        "rdb_url": config["rdb_url"],
         "packager": config["packager"],
         "base_dir": config["base_dir"],
         "environment_dir": config["environment_dir"],
