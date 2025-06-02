@@ -7,7 +7,7 @@ from .clean_cmd import clean_cmd
 from .config_cmd import config_cmd
 from .install_cmd import install_cmd
 from .run_cmd import run_cmd
-from .auxiliary_cmd import copy_pyproject_deps, rust_update_vendor
+from .auxiliary_cmd import copy_pyproject_deps, rust_update_vendor, go_update_vendor
 from .logs_cmd import logs_cmd
 from .copy_cmd import copy_group
 from ..config import load_config
@@ -41,6 +41,7 @@ cli.add_command(install_cmd)
 cli.add_command(run_cmd)
 cli.add_command(copy_pyproject_deps)
 cli.add_command(rust_update_vendor)
+cli.add_command(go_update_vendor)
 cli.add_command(copy_group)
 cli.add_command(logs_cmd)
 

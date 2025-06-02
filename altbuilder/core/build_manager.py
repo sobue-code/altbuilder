@@ -1,5 +1,6 @@
 import os
 import shutil
+import shlex
 from datetime import datetime
 from ..exceptions import BuildError
 from ..utils.logger import logger
@@ -82,8 +83,6 @@ class BuildManager:
 
             # Inject extra hsh arguments
             if hsh_extra:
-                import shlex
-
                 hasher_args[1:1] = shlex.split(hsh_extra)
 
             # Prepare extra rpmbuild args
