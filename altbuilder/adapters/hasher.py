@@ -39,6 +39,22 @@ class HasherAdapter(ToolAdapter):
             cmd.extend(extra_args)
         return self.execute(cmd, log_file=log_file, cwd=src_path)
 
+    def build_from_srpm(
+        self, src_rpm, workdir, apt_config, arch, log_file=None, extra_args=None
+    ):
+        cmd = [
+            "hsh",
+            "--apt-config",
+            apt_config,
+            "--verbose",
+            f"--target={arch}",
+            f"--workdir={workdir}",
+            src_rpm,
+        ]
+        if extra_args:
+            cmd.extend(extra_args)
+        return self.execute(cmd, log_file=log_file)
+
     def shell(self, workdir, root=False, internet=False):
         cmd = ["hsh-shell"]
         cmd.append("--mount=/proc")

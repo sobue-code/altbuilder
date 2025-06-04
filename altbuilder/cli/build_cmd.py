@@ -7,7 +7,7 @@ from ..utils.setup_sandbox import setup_sandbox
 
 
 @click.command("build")
-@click.argument("source_dir", required=False)
+@click.argument("build_target", required=False)
 @click.option(
     "--arch",
     "-a",
@@ -39,10 +39,22 @@ from ..utils.setup_sandbox import setup_sandbox
 )
 @click.help_option("--help", "-h")
 def build_cmd(
-    source_dir, arch, branch, reinit, sandbox, no_check, hsh_extra, rpmbuild_extra
+    build_target, arch, branch, reinit, sandbox, no_check, hsh_extra, rpmbuild_extra
 ):
-    """Build a package in the specified sandbox."""
+    """Build a package in the specified sandbox. BUILD_TARGET can be a source directory or an src.rpm file."""
     config = load_config()
+
+    # Determine if build_target is an src.rpm file
+    if (
+        build_target
+        and os.path.isfile(build_target)
+        and build_target.endswith(".src.rpm")
+    ):
+        is_src_rpm = True
+    else:
+        is_src_rpm = False
+        if not build_target:
+            build_target = os.getcwd()
 
     # Set up sandbox environment
     env = setup_sandbox(sandbox, branch, arch, reinit, config)
@@ -51,7 +63,11 @@ def build_cmd(
     builder = BuildManager(env)
 
     # Get package name for logging purposes
-    package_name = os.path.basename(os.path.abspath(source_dir or os.getcwd()))
+    package_name = (
+        os.path.basename(build_target).replace(".src.rpm", "")
+        if is_src_rpm
+        else os.path.basename(os.path.abspath(build_target))
+    )
 
     click.echo(colorize(f"Building {package_name} in sandbox: {env.name}", bold=True))
     log_dir = os.path.join(config["build_logs_dir"], env.name, package_name)
@@ -70,8 +86,9 @@ def build_cmd(
 
     # Perform the build
     builder.build(
-        source_dir,
-        env.apt_conf,
+        build_target=build_target,
+        is_src_rpm=is_src_rpm,
+        apt_conf=env.apt_conf,
         build_log_dir=build_log_dir,
         no_check=no_check,
         hsh_extra=hsh_extra,

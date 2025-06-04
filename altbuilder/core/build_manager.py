@@ -18,7 +18,8 @@ class BuildManager:
 
     def build(
         self,
-        source_dir=None,
+        build_target=None,
+        is_src_rpm=False,
         apt_conf=None,
         only_srpm=False,
         build_log_dir=None,
@@ -29,8 +30,12 @@ class BuildManager:
         if not self.environment.exists():
             self.environment.init()
 
-        source_dir = source_dir or os.getcwd()
-        package_name = os.path.basename(source_dir)
+        build_target = build_target or os.getcwd()
+        package_name = (
+            os.path.basename(build_target).replace(".src.rpm", "")
+            if is_src_rpm
+            else os.path.basename(build_target)
+        )
         logger.info(f"Building {package_name} in {self.environment.name}")
 
         # If no build log directory specified, create one
@@ -67,38 +72,49 @@ class BuildManager:
         gear_log = os.path.join(build_log_dir, f"{package_name}.log")
 
         with self.metrics.track_build(package_name):
-            hasher_args = [
-                "hsh",
-                "--apt-config",
-                apt_conf or self.environment.apt_conf,
-                "--verbose",
-                "--no-sisyphus-check=packager,gpg",
-                "--target",
-                self.environment.config["arch"],
-                self.environment.hasher_dir,
-                "--lazy-cleanup",
-            ]
-            if only_srpm:
-                hasher_args.append("--build-srpm-only")
+            if is_src_rpm:
+                extra_args = shlex.split(hsh_extra) if hsh_extra else []
+                self.hasher_adapter.build_from_srpm(
+                    src_rpm=build_target,
+                    workdir=self.environment.hasher_dir,
+                    apt_config=apt_conf or self.environment.apt_conf,
+                    arch=self.environment.config["arch"],
+                    log_file=hasher_log,
+                    extra_args=extra_args,
+                )
+            else:
+                hasher_args = [
+                    "hsh",
+                    "--apt-config",
+                    apt_conf or self.environment.apt_conf,
+                    "--verbose",
+                    "--no-sisyphus-check=packager,gpg",
+                    "--target",
+                    self.environment.config["arch"],
+                    self.environment.hasher_dir,
+                    "--lazy-cleanup",
+                ]
+                if only_srpm:
+                    hasher_args.append("--build-srpm-only")
 
-            # Inject extra hsh arguments
-            if hsh_extra:
-                hasher_args[1:1] = shlex.split(hsh_extra)
+                # Inject extra hsh arguments
+                if hsh_extra:
+                    hasher_args[1:1] = shlex.split(hsh_extra)
 
-            # Prepare extra rpmbuild args
-            rpmbuild_args = []
-            if rpmbuild_extra:
-                rpmbuild_args.extend(shlex.split(rpmbuild_extra))
-            if no_check:
-                rpmbuild_args.append("--without=check")
+                # Prepare extra rpmbuild args
+                rpmbuild_args = []
+                if rpmbuild_extra:
+                    rpmbuild_args.extend(shlex.split(rpmbuild_extra))
+                if no_check:
+                    rpmbuild_args.append("--without=check")
 
-            self.gear_adapter.build(
-                workdir=source_dir,
-                hasher_args=hasher_args,
-                build_log_dir=build_log_dir,
-                rpmbuild_args=rpmbuild_args if rpmbuild_args else None,
-                log_file=gear_log,
-            )
+                self.gear_adapter.build(
+                    workdir=build_target,
+                    hasher_args=hasher_args,
+                    build_log_dir=build_log_dir,
+                    rpmbuild_args=rpmbuild_args if rpmbuild_args else None,
+                    log_file=gear_log,
+                )
 
             logger.info(f"Build logs saved to: {build_log_dir}")
             return build_log_dir

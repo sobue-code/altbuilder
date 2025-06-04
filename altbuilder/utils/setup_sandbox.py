@@ -37,6 +37,7 @@ def setup_sandbox(sandbox, branch, arch, reinit, config, task_id=None):
     branch = branch or (existing_info.branch if existing_info else config["branch"])
     arch = arch or (existing_info.arch if existing_info else config["arch"])
     resolved_task_id = task_id or (existing_info.task_id if existing_info else None)
+    logger.info(f"Resolved task ID: {resolved_task_id}")
 
     # Validate branch and arch for initialization
     if not branch or not arch:
@@ -48,15 +49,15 @@ def setup_sandbox(sandbox, branch, arch, reinit, config, task_id=None):
         )
     # Validate task_id if provided
     if resolved_task_id:
-        task_info = fetch_task_info(task_id, config["rdb_url"])
+        task_info = fetch_task_info(resolved_task_id, config["rdb_url"])
         task_branch = task_info.get("branch", "").lower() if task_info else None
         logger.debug(
-            f"Task {task_id} branch: {task_branch}, expected branch: {branch.lower()}"
+            f"Task {resolved_task_id} branch: {task_branch}, expected branch: {branch.lower()}"
         )
         if task_branch != branch.lower():
             click.echo(
                 colorize(
-                    f"Warning: Task {task_id} branch does not match sandbox branch {branch}.",
+                    f"Warning: Task {resolved_task_id} branch does not match sandbox branch {branch}.",
                     color="yellow",
                 )
             )
