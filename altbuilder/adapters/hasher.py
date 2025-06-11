@@ -16,6 +16,7 @@ class HasherAdapter(ToolAdapter):
     def init_chroot(self, workdir, arch, apt_config, log_file=None):
         cmd = [
             "hsh",
+            "--wait-lock",
             "--apt-config",
             apt_config,
             "--initroot-only",
@@ -29,6 +30,7 @@ class HasherAdapter(ToolAdapter):
     ):
         cmd = [
             "hsh",
+            "--wait-lock",
             "--apt-config",
             apt_config,
             "--verbose",
@@ -44,6 +46,7 @@ class HasherAdapter(ToolAdapter):
     ):
         cmd = [
             "hsh",
+            "--wait-lock",
             "--apt-config",
             apt_config,
             "--verbose",
@@ -56,7 +59,7 @@ class HasherAdapter(ToolAdapter):
         return self.execute(cmd, log_file=log_file)
 
     def shell(self, workdir, root=False, internet=False):
-        cmd = ["hsh-shell"]
+        cmd = ["hsh-shell", "--wait-lock"]
         cmd.append("--mount=/proc")
         if root:
             cmd.append("--rooter")
@@ -70,6 +73,6 @@ class HasherAdapter(ToolAdapter):
 
     def install(self, workdir, *packages):
         """Installs packages in the sandbox."""
-        cmd = ["hsh-install", workdir] + list(packages)
+        cmd = ["hsh-install", "--wait-lock", workdir] + list(packages)
         run_logged_command(cmd, check=True)
         logger.info(f"Packages installed in sandbox {self.name}")

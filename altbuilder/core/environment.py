@@ -77,7 +77,7 @@ class Environment:
         """Generate priorities file based on branch."""
         branch = self.config.get("branch", "Sisyphus").lower()
         release = (
-            "altlinux-release-sis"
+            "altlinux-release-Sisyphus"
             if branch == "sisyphus"
             else f"altlinux-release-{branch}"
         )
@@ -144,7 +144,7 @@ Debug::pkgProblemResolver "true";
         if os.path.exists(self.priorities):
             shutil.copy2(self.priorities, os.path.join(log_dir, "priorities"))
 
-        cmd = ["hsh", "--apt-config", self.apt_conf, "--initroot-only"]
+        cmd = ["hsh", "--wait-lock", "--apt-config", self.apt_conf, "--initroot-only"]
         host_arch = get_host_arch()
         if self.config["arch"] != host_arch:
             run_logged_command(
@@ -181,7 +181,7 @@ Debug::pkgProblemResolver "true";
         if not os.path.exists(self.environment_dir):
             raise EnvironmentError(f"Sandbox {self.name} does not exist.")
         try:
-            cmd = ["hsh", "--cleanup-only", self.hasher_dir]
+            cmd = ["hsh", "--wait-lock", "--cleanup-only", self.hasher_dir]
             run_logged_command(cmd, check=True, real_time=True, log_file=clean_log)
             shutil.rmtree(self.environment_dir)
             logger.info(f"Sandbox {self.name} cleaned successfully.")
@@ -231,6 +231,7 @@ Debug::pkgProblemResolver "true";
 
         cmd = [
             "hsh-shell",
+            "--wait-lock",
             "--rooter",
             "--mountpoints=/proc",
             self.hasher_dir,
@@ -275,6 +276,7 @@ Debug::pkgProblemResolver "true";
             raise FileNotFoundError(f"Sandbox {self.name} does not exist.")
         cmd = [
             "hsh-install",
+            "--wait-lock",
             self.hasher_dir,
         ] + list(packages)
         run_logged_command(cmd, check=True)
@@ -290,7 +292,7 @@ Debug::pkgProblemResolver "true";
 
         command_parts = shlex.split(command)
 
-        cmd = ["hsh-run", "--mountpoints=/proc", self.hasher_dir, "--"] + command_parts
+        cmd = ["hsh-run", "--wait-lock", "--mountpoints=/proc", self.hasher_dir, "--"] + command_parts
 
         run_logged_command(cmd, check=True, quiet=True)
 
@@ -310,7 +312,7 @@ Debug::pkgProblemResolver "true";
         try:
             # Use hsh-copy to transfer files into the sandbox
             subprocess.run(
-                ["hsh-copy", "--workdir", self.hasher_dir, src, dst],
+                ["hsh-copy", "--wait-lock", "--workdir", self.hasher_dir, src, dst],
                 check=True,
             )
             logger.info(f"Successfully copied {src} to {dst} in sandbox {self.name}")
@@ -340,6 +342,7 @@ Debug::pkgProblemResolver "true";
             is_dir_proc = subprocess.run(
                 [
                     "hsh-run",
+                    "--wait-lock",
                     "--mountpoints=/proc",
                     self.hasher_dir,
                     "--",
@@ -359,6 +362,7 @@ Debug::pkgProblemResolver "true";
                 proc = subprocess.Popen(
                     [
                         "hsh-run",
+                        "--wait-lock",
                         f"--mount={exchange_dir}:{mount_point}",
                         "--mountpoints=/proc",
                         self.hasher_dir,
@@ -384,6 +388,7 @@ Debug::pkgProblemResolver "true";
                 subprocess.run(
                     [
                         "hsh-run",
+                        "--wait-lock",
                         f"--mount={exchange_dir}:{mount_point}",
                         "--mountpoints=/proc",
                         self.hasher_dir,

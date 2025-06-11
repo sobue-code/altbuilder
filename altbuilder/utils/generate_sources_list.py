@@ -43,10 +43,10 @@ def generate_sources_list(
         lines.append(f"rpm {repo_path} {arch} classic")
         lines.append(f"rpm {repo_path} noarch classic")
     elif branch.lower() == "sisyphus":
-        lines.append(f"rpm [alt] {mirror} ALTLinux/{branch}/{arch} classic")
-        lines.append(f"rpm [alt] {mirror} ALTLinux/{branch}/noarch classic")
+        lines.append(f"rpm {mirror}/ALTLinux/{branch} {arch} classic")
+        lines.append(f"rpm {mirror}/ALTLinux/{branch} noarch classic")
         if arch == "x86_64":
-            lines.append(f"rpm [alt] {mirror} ALTLinux/{branch}/{arch}-i586 classic")
+            lines.append(f"rpm {mirror}/ALTLinux/{branch} {arch}-i586 classic")
     elif branch.startswith("p") and branch[1:].isdigit():
         lines.append(
             f"rpm [{branch}] {mirror}/ALTLinux {branch}/branch/{arch} classic gostcrypto"
