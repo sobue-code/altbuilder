@@ -1,6 +1,7 @@
 import click
 from .init_cmd import init_cmd
 from .build_cmd import build_cmd
+from .rebuild_cmd import rebuild_cmd
 from .list_cmd import list_cmd
 from .shell_cmd import shell_cmd
 from .clean_cmd import clean_cmd
@@ -33,6 +34,7 @@ def cli(sandbox):
 # Register commands
 cli.add_command(init_cmd)
 cli.add_command(build_cmd)
+cli.add_command(rebuild_cmd)
 cli.add_command(list_cmd)
 cli.add_command(shell_cmd)
 cli.add_command(clean_cmd)
