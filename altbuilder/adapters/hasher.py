@@ -31,6 +31,7 @@ class HasherAdapter(ToolAdapter):
         cmd = [
             "hsh",
             "--wait-lock",
+            "--mount=/proc,/dev/pts",
             "--apt-config",
             apt_config,
             "--verbose",
@@ -47,6 +48,7 @@ class HasherAdapter(ToolAdapter):
         cmd = [
             "hsh",
             "--wait-lock",
+            "--mount=/proc,/dev/pts",
             "--apt-config",
             apt_config,
             "--verbose",
