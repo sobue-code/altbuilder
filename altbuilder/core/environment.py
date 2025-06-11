@@ -98,6 +98,8 @@ Dir::Etc::sourcelist "{self.sources_list}";
 Dir::Etc::pkgpriorities "{self.priorities}";
 APT::Cache-Limit "201326592";
 APT::Architecture "{self.config['arch']}";
+Debug::pkgMarkInstall "true";                                                    
+Debug::pkgProblemResolver "true";
 """
         with open(self.apt_conf, "w") as f:
             f.write(conf)
