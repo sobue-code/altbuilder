@@ -5,6 +5,7 @@ import shutil
 from ..config import load_config, get_sandbox_config
 from ..core.environment import Environment
 from ..utils import init_logger, logger, colorize
+from ..utils.metrics import Metrics
 
 
 @click.command("copy-pyproject-deps")
@@ -115,7 +116,9 @@ def rust_update_vendor(sandbox, reinit, tag):
         cargo vendor;
         """,
     ]
-    subprocess.run(cmd, env=env_vars, check=True)
+    metrics = Metrics(base_dir=config["base_dir"])
+    with metrics.track_command(command=" ".join(cmd), sandbox_name=sandbox_name):
+        subprocess.run(cmd, env=env_vars, check=True)
 
     # Copy vendor from sandbox to host using copy_from
     try:
@@ -195,6 +198,7 @@ def go_update_vendor(sandbox, reinit, tag):
         f"""
         set -e;
         cd /usr/src;
+        rm -rf package_go;
         git clone '{upstream_url}' package_go;
         cd package_go;
         {tag_cmd}
@@ -205,7 +209,9 @@ def go_update_vendor(sandbox, reinit, tag):
         go mod vendor;
         """,
     ]
-    subprocess.run(cmd, env=env_vars, check=True)
+    metrics = Metrics(base_dir=config["base_dir"])
+    with metrics.track_command(command=" ".join(cmd), sandbox_name=sandbox_name):
+        subprocess.run(cmd, env=env_vars, check=True)
 
     try:
         env.copy_from("/usr/src/package_go/vendor", "./vendor")

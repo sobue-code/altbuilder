@@ -11,10 +11,11 @@ from ..adapters.hasher import HasherAdapter
 
 class BuildManager:
     def __init__(self, environment, gear_adapter=None, hasher_adapter=None):
+        """Initialize BuildManager with environment and optional adapters."""
         self.environment = environment
         self.gear_adapter = gear_adapter or GearAdapter()
         self.hasher_adapter = hasher_adapter or HasherAdapter()
-        self.metrics = Metrics()
+        self.metrics = Metrics(base_dir=self.environment.config["base_dir"])
 
     def build(
         self,
@@ -27,6 +28,7 @@ class BuildManager:
         hsh_extra="",
         rpmbuild_extra="",
     ):
+        """Build a package with the specified parameters."""
         if not self.environment.exists():
             self.environment.init()
 
@@ -52,7 +54,7 @@ class BuildManager:
         apt_dir = os.path.join(build_log_dir, "apt")
         os.makedirs(apt_dir, exist_ok=True)
 
-        # Save a copy of the sources.list, apt.conf, and priorities files in apt subdirectory
+        # Save copies of sources.list, apt.conf, and priorities files in apt subdirectory
         sources_list_file = os.path.join(build_log_dir, "apt", "sources.list")
         apt_conf_file = os.path.join(build_log_dir, "apt", "apt.conf")
         priorities_file = os.path.join(build_log_dir, "apt", "priorities")
@@ -71,7 +73,11 @@ class BuildManager:
         # Log file for gear command, named after the package
         gear_log = os.path.join(build_log_dir, f"{package_name}.log")
 
-        with self.metrics.track_build(package_name):
+        with self.metrics.track_build(
+            package_name=package_name,
+            build_log_dir=build_log_dir,
+            sandbox_name=self.environment.name,
+        ):
             if is_src_rpm:
                 extra_args = shlex.split(hsh_extra) if hsh_extra else []
                 self.hasher_adapter.build_from_srpm(

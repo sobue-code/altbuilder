@@ -296,7 +296,7 @@ def rebuild_cmd(sandbox, package_name):
         build_log = os.path.join(build_log_dir, "build.log")
 
         # Initialize HasherAdapter for building
-        hasher = HasherAdapter()
+        hasher = HasherAdapter(base_dir=config.get("base_dir"))
 
         # Perform the rebuild
         hasher.build_from_srpm(

@@ -1,19 +1,39 @@
-import subprocess
 import os
 from .base import ToolAdapter
 from ..utils.logger import logger
+from ..utils.metrics import Metrics
 from ..utils.helpers import run_logged_command
-from ..exceptions import ToolError
 
 
 class HasherAdapter(ToolAdapter):
-    def run_command(self, cmd, log_file=None, **kwargs):
-        logger.info(f"Running hasher command: {' '.join(cmd)}")
-        return run_logged_command(
-            cmd, check=True, real_time=True, log_file=log_file, **kwargs
-        )
+    def __init__(self, base_dir=None):
+        """Initialize HasherAdapter with Metrics instance."""
+        super().__init__()
+        self.metrics = Metrics(base_dir=base_dir)
+        self.base_dir = base_dir
 
-    def init_chroot(self, workdir, arch, apt_config, log_file=None):
+    def run_command(self, cmd, log_file=None, sandbox_dir=None, sandbox_name=None):
+        """Run a hasher command with metrics tracking."""
+        if not self.base_dir:
+            raise ValueError("base_dir is required for command tracking")
+
+        self.metrics.base_dir = self.base_dir
+        command_str = " ".join(cmd)
+        with self.metrics.track_command(
+            command=command_str,
+            log_dir=os.path.dirname(log_file) if log_file else None,
+            sandbox_name=sandbox_name,
+        ):
+            logger.info(f"Executing: {command_str}")
+            return run_logged_command(
+                cmd,
+                check=True,
+                real_time=True,
+                log_file=log_file,
+            )
+
+    def init_chroot(self, workdir, arch, apt_config, log_file=None, sandbox_name=None):
+        """Initialize chroot environment with metrics tracking."""
         cmd = [
             "hsh",
             "--wait-lock",
@@ -23,11 +43,24 @@ class HasherAdapter(ToolAdapter):
             f"--target={arch}",
             workdir,
         ]
-        return self.execute(cmd, log_file=log_file)
+        return self.run_command(
+            cmd,
+            log_file=log_file,
+            sandbox_dir=os.path.dirname(workdir),
+            sandbox_name=sandbox_name,
+        )
 
     def build(
-        self, workdir, apt_config, arch, src_path, log_file=None, extra_args=None
+        self,
+        workdir,
+        apt_config,
+        arch,
+        src_path,
+        log_file=None,
+        extra_args=None,
+        sandbox_name=None,
     ):
+        """Build a package from source with metrics tracking."""
         cmd = [
             "hsh",
             "--wait-lock",
@@ -40,11 +73,25 @@ class HasherAdapter(ToolAdapter):
         ]
         if extra_args:
             cmd.extend(extra_args)
-        return self.execute(cmd, log_file=log_file, cwd=src_path)
+        return self.run_command(
+            cmd,
+            log_file=log_file,
+            sandbox_dir=os.path.dirname(workdir),
+            sandbox_name=sandbox_name,
+            cwd=src_path,
+        )
 
     def build_from_srpm(
-        self, src_rpm, workdir, apt_config, arch, log_file=None, extra_args=None
+        self,
+        src_rpm,
+        workdir,
+        apt_config,
+        arch,
+        log_file=None,
+        extra_args=None,
+        sandbox_name=None,
     ):
+        """Build a package from an SRPM with metrics tracking."""
         cmd = [
             "hsh",
             "--wait-lock",
@@ -58,9 +105,15 @@ class HasherAdapter(ToolAdapter):
         ]
         if extra_args:
             cmd.extend(extra_args)
-        return self.execute(cmd, log_file=log_file)
+        return self.run_command(
+            cmd,
+            log_file=log_file,
+            sandbox_dir=os.path.dirname(workdir),
+            sandbox_name=sandbox_name,
+        )
 
     def shell(self, workdir, root=False, internet=False):
+        """Launch an interactive shell in the sandbox."""
         cmd = ["hsh-shell", "--wait-lock"]
         cmd.append("--mount=/proc")
         if root:
@@ -70,11 +123,6 @@ class HasherAdapter(ToolAdapter):
             os.environ["share_network"] = "yes"
             os.environ["share_ipc"] = "yes"
         cmd.append(workdir)
-        logger.info(f"Launching interactive shell: {' '.join(cmd)}")
+        command_str = " ".join(cmd)
+        logger.info(f"Launching interactive shell: {command_str}")
         os.execvp(cmd[0], cmd)
-
-    def install(self, workdir, *packages):
-        """Installs packages in the sandbox."""
-        cmd = ["hsh-install", "--wait-lock", workdir] + list(packages)
-        run_logged_command(cmd, check=True)
-        logger.info(f"Packages installed in sandbox {self.name}")
