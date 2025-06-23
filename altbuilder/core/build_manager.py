@@ -93,6 +93,7 @@ class BuildManager:
                     "hsh",
                     "--apt-config",
                     apt_conf or self.environment.apt_conf,
+                    "--mount=/proc,/dev/pts,/dev/console",
                     "--verbose",
                     "--no-sisyphus-check=packager,gpg",
                     "--target",
