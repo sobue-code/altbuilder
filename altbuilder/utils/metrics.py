@@ -28,6 +28,11 @@ class Metrics:
             raise ValueError("base_dir is required for tracking builds")
 
         temp_json_path = os.path.join(self.base_dir, "current_task.json")
+        temp_result_path = (
+            os.path.join(self.base_dir, "temp_build_result.json")
+            if build_log_dir
+            else None
+        )
 
         # Check if a task is already running
         if os.path.exists(temp_json_path):
@@ -60,6 +65,20 @@ class Metrics:
         with open(temp_json_path, "w") as f:
             json.dump(task_info, f, indent=2)
 
+        # Initialize temporary result file
+        if build_log_dir:
+            temp_result = {
+                "package": package_name,
+                "command": "build",
+                "start_time": start_time,
+                "duration": 0.0,
+                "success": False,
+                "end_time": None,
+                "sandbox_name": sandbox_name or "unknown",
+            }
+            with open(temp_result_path, "w") as f:
+                json.dump(temp_result, f, indent=2)
+
         start_time_seconds = time.time()
         success = False
         try:
@@ -69,6 +88,8 @@ class Metrics:
             duration = time.time() - start_time_seconds
             if os.path.exists(temp_json_path):
                 os.remove(temp_json_path)
+            if temp_result_path and os.path.exists(temp_result_path):
+                os.remove(temp_result_path)
 
             if build_log_dir:
                 result = {
@@ -98,6 +119,9 @@ class Metrics:
             raise ValueError("base_dir is required for tracking commands")
 
         temp_json_path = os.path.join(self.base_dir, "current_task.json")
+        temp_result_path = (
+            os.path.join(self.base_dir, "temp_command_result.json") if log_dir else None
+        )
 
         # Check if a task is already running
         if os.path.exists(temp_json_path):
@@ -130,6 +154,20 @@ class Metrics:
         with open(temp_json_path, "w") as f:
             json.dump(task_info, f, indent=2)
 
+        # Initialize temporary result file
+        if log_dir:
+            temp_result = {
+                "command": command,
+                "package_name": package_name,
+                "start_time": start_time,
+                "duration": 0.0,
+                "success": False,
+                "end_time": None,
+                "sandbox_name": sandbox_name or "unknown",
+            }
+            with open(temp_result_path, "w") as f:
+                json.dump(temp_result, f, indent=2)
+
         start_time_seconds = time.time()
         success = False
         try:
@@ -139,6 +177,8 @@ class Metrics:
             duration = time.time() - start_time_seconds
             if os.path.exists(temp_json_path):
                 os.remove(temp_json_path)
+            if temp_result_path and os.path.exists(temp_result_path):
+                os.remove(temp_result_path)
 
             if log_dir:
                 result = {
