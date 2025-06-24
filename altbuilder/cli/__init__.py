@@ -17,7 +17,56 @@ from ..config import load_config
 from ..utils.logger import init_logger, logger
 
 
-@click.group()
+class GroupedHelpGroup(click.Group):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._commands = []
+        self.command_groups = [
+            ("Sandbox Management", [
+                init_cmd,
+                list_cmd,
+                shell_cmd,
+                clean_cmd,
+                config_cmd,
+                install_cmd,
+                run_cmd,
+                track_cmd,
+                stop_cmd,
+                logs_cmd,
+            ]),
+            ("Build packages", [
+                build_cmd,
+                rebuild_cmd,
+            ]),
+            ("Auxiliary", [
+                copy_pyproject_deps,
+                rust_update_vendor,
+                go_update_vendor,
+                copy_group,
+            ]),
+        ]
+
+    def add_command(self, cmd, name=None):
+        super().add_command(cmd, name)
+        self._commands.append(cmd.name)
+
+    def list_commands(self, ctx):
+        return self._commands
+
+    def format_commands(self, ctx, formatter):
+        for group_name, commands in self.command_groups:
+            with formatter.section(group_name):
+                rows = []
+                for cmd in commands:
+                    cmd_obj = self.get_command(ctx, cmd.name)
+                    if cmd_obj is None:
+                        continue
+                    help_text = cmd_obj.get_short_help_str()
+                    rows.append((cmd.name, help_text))
+                formatter.write_dl(rows)
+
+
+@click.group(cls=GroupedHelpGroup)
 @click.option(
     "--sandbox",
     "-s",
@@ -33,10 +82,7 @@ def cli(sandbox):
     logger.info(f"Loaded config from {config.get('config_file', 'default')}")
 
 
-# Register commands
 cli.add_command(init_cmd)
-cli.add_command(build_cmd)
-cli.add_command(rebuild_cmd)
 cli.add_command(list_cmd)
 cli.add_command(shell_cmd)
 cli.add_command(clean_cmd)
@@ -45,11 +91,13 @@ cli.add_command(install_cmd)
 cli.add_command(run_cmd)
 cli.add_command(track_cmd)
 cli.add_command(stop_cmd)
+cli.add_command(logs_cmd)
+cli.add_command(build_cmd)
+cli.add_command(rebuild_cmd)
 cli.add_command(copy_pyproject_deps)
 cli.add_command(rust_update_vendor)
 cli.add_command(go_update_vendor)
 cli.add_command(copy_group)
-cli.add_command(logs_cmd)
 
 
 if __name__ == "__main__":
