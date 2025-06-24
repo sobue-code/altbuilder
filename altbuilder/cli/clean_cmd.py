@@ -22,6 +22,15 @@ def clean_cmd(sandbox, all):
     logger.debug(f"Cleaning or all sandboxes in {environment_dir}")
     logger.debug(f"{os.listdir(environment_dir)}")
 
+    def suggest_manual_removal(sandbox_path):
+        manual_cmd = f"sudo rm -rf {sandbox_path}"
+        click.echo(
+            colorize(
+                f"Permission issue detected. Please remove the sandbox manually: \n\t {manual_cmd}",
+                color="yellow",
+            )
+        )
+
     if all:
         logger.info("Cleaning all sandboxes")
         if not os.path.exists(environment_dir):
@@ -36,15 +45,29 @@ def clean_cmd(sandbox, all):
         failed = []
         for sandbox in sandboxes:
             sandbox_path = os.path.join(environment_dir, sandbox)
-            cmd = ["hsh", "--cleanup-only", sandbox_path + "/hasher"]
+            env = Environment(sandbox, get_sandbox_config(sandbox, config))
             try:
-                run_logged_command(cmd, check=True)
-                shutil.rmtree(sandbox_path, ignore_errors=True)
-                click.echo(colorize(f"Sandbox {sandbox} cleaned.", color="green"))
-                logger.info(f"Cleaned sandbox {sandbox}")
+                if env.is_partially_initialized() and not env.exists():
+                    logger.info(f"Removing partially initialized sandbox {sandbox}")
+                    shutil.rmtree(sandbox_path)
+                    if os.path.exists(sandbox_path):
+                        suggest_manual_removal(sandbox_path)
+                        raise OSError(f"Failed to remove directory {sandbox_path}")
+                    click.echo(colorize(f"Sandbox {sandbox} cleaned.", color="green"))
+                    logger.info(f"Cleaned sandbox {sandbox}")
+                else:
+                    cmd = ["hsh", "--cleanup-only", sandbox_path + "/hasher"]
+                    run_logged_command(cmd, check=True)
+                    shutil.rmtree(sandbox_path)
+                    if os.path.exists(sandbox_path):
+                        suggest_manual_removal(sandbox_path)
+                        raise OSError(f"Failed to remove directory {sandbox_path}")
+                    click.echo(colorize(f"Sandbox {sandbox} cleaned.", color="green"))
+                    logger.info(f"Cleaned sandbox {sandbox}")
             except (subprocess.CalledProcessError, OSError) as e:
                 click.echo(colorize(f"Error cleaning {sandbox}: {e}", color="red"))
                 logger.error(f"Failed to clean sandbox {sandbox}: {e}")
+                suggest_manual_removal(sandbox_path)
                 failed.append(sandbox)
         if failed:
             click.echo(
@@ -70,20 +93,32 @@ def clean_cmd(sandbox, all):
                             color="yellow",
                         )
                     )
-                    env.clean()
+                    logger.info(
+                        f"Removing partially initialized sandbox {sandbox_name}"
+                    )
+                    shutil.rmtree(env.environment_dir)
+                    if os.path.exists(env.environment_dir):
+                        suggest_manual_removal(env.environment_dir)
+                        raise OSError(
+                            f"Failed to remove directory {env.environment_dir}"
+                        )
+                    click.echo(
+                        colorize(f"Sandbox {sandbox_name} cleaned.", color="green")
+                    )
+                    logger.info(f"Cleaned sandbox {sandbox_name}")
                     return
                 click.echo(
                     colorize(f"Sandbox {sandbox_name} does not exist.", color="red")
                 )
                 return
-            cmd = ["hsh", "--cleanup-only", env.hasher_dir]
-            run_logged_command(cmd, check=True)
             env.clean()
             click.echo(colorize(f"Sandbox {sandbox_name} cleaned.", color="green"))
             logger.info(f"Cleaned sandbox {sandbox_name}")
-        except (subprocess.CalledProcessError, EnvironmentError) as e:
+        except (subprocess.CalledProcessError, EnvironmentError, OSError) as e:
             click.echo(colorize(f"Error: {e}", color="red"))
             logger.error(f"Failed to clean sandbox {sandbox_name}: {e}")
+            suggest_manual_removal(env.environment_dir)
+            raise click.ClickException(f"Failed to clean sandbox {sandbox_name}: {e}")
     else:
         click.echo(
             colorize("Please specify a sandbox to clean or use --all.", color="red")
