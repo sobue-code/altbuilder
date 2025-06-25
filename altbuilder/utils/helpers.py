@@ -34,6 +34,8 @@ def run_logged_command(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            encoding="utf-8",
+            errors="replace",  # Replace invalid bytes with �
             bufsize=1,  # Line buffered
             **{
                 k: v for k, v in kwargs.items() if k not in ["stdout", "stderr", "text"]
