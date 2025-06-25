@@ -13,15 +13,14 @@ from ..utils import (
 @click.command("list")
 @click.option("--sandbox", "-s", help="Show details for the specified sandbox only.")
 @click.option(
-    "--open",
-    "-o",
+    "-f",
     is_flag=True,
     help="""Open sandbox directory (or all sandboxes dir) in file manager provided by 
     ALTBUILDER_FILE_MANAGER env variable or default to mc.""",
 )
-@click.option("--file-manager", "-fm", help="Specify file manager (e.g. mc or ranger).")
+@click.option("--file-manager", help="Specify file manager (e.g. mc or ranger).")
 @click.help_option("--help", "-h")
-def list_cmd(sandbox, open, file_manager):
+def list_cmd(sandbox, f, file_manager):
     """List all existing sandboxes."""
     config = load_config()
     logger.info("Listing all existing sandboxes")
@@ -89,7 +88,7 @@ def list_cmd(sandbox, open, file_manager):
     logger.debug(f"Sandboxes: {', '.join(sandboxes)}")
 
     # Open sandbox directory (or all sandboxes dir) in file manager
-    if open:
+    if f:
         if sandbox:
             open_with_file_manager(os.path.join(environment_dir, sandbox), file_manager)
         else:
