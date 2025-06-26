@@ -4,10 +4,11 @@ import requests
 from bs4 import BeautifulSoup
 import tempfile
 import click
-from altbuilder.config import load_config, get_sandbox_config
-from altbuilder.core.environment import Environment
-from altbuilder.adapters.hasher import HasherAdapter
-from altbuilder.utils import init_logger, colorize, logger
+from ..config import load_config, get_sandbox_config
+from ..core.environment import Environment
+from ..core.build_manager import BuildManager
+from ..adapters.hasher import HasherAdapter
+from ..utils import init_logger, colorize, logger
 
 
 def get_local_repo_dir(mirror, branch):
@@ -298,13 +299,17 @@ def rebuild_cmd(sandbox, package_name):
         # Initialize HasherAdapter for building
         hasher = HasherAdapter(base_dir=config.get("base_dir"))
 
-        # Perform the rebuild
-        hasher.build_from_srpm(
-            src_rpm=src_rpm_path,
-            workdir=env.hasher_dir,
-            apt_config=env.apt_conf,
-            arch=env.config["arch"],
-            log_file=build_log,
+        builder = BuildManager(env, hasher_adapter=hasher)
+        builder.build(
+            build_target=src_rpm_path,
+            is_src_rpm=True,
+            apt_conf=None,
+            only_srpm=False,
+            build_log_dir=build_log_dir,
+            no_check=False,
+            hsh_extra="",
+            rpmbuild_extra="",
+            command="rebuild",
         )
         click.echo(
             colorize(

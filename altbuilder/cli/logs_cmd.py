@@ -36,6 +36,7 @@ def collect_build_logs(log_dir, sandbox=None, package=None):
                         "end_time": build_info.get("end_time", "N/A"),
                         "duration": build_info.get("duration", 0.0),
                         "success": build_info.get("success", False),
+                        "command": build_info.get("command", "N/A"),
                         "build_dir": build_dir,
                         "log_path": root
                     })
@@ -51,6 +52,7 @@ def format_build_logs(builds):
     table.add_column("Sandbox", style="cyan")
     table.add_column("Package", style="cyan")
     table.add_column("Status", style="white")
+    table.add_column("CMD", style="white")
     table.add_column("Duration (s)", style="white")
     table.add_column("Start Time", style="white")
     table.add_column("End Time", style="white")
@@ -63,6 +65,7 @@ def format_build_logs(builds):
             build["sandbox"],
             build["package"] or "N/A",
             f"[{status_style}]{status}[/{status_style}]",
+            build["command"],
             f"{build['duration']:.2f}",
             build["start_time"],
             build["end_time"],

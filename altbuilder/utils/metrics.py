@@ -22,7 +22,7 @@ class Metrics:
             return False
 
     @contextmanager
-    def track_build(self, package_name, build_log_dir=None, sandbox_name=None):
+    def track_build(self, package_name, build_log_dir=None, sandbox_name=None, command="build"):
         """Track a package build process, saving temporary and result JSON files."""
         if not self.base_dir:
             raise ValueError("base_dir is required for tracking builds")
@@ -33,13 +33,14 @@ class Metrics:
             if build_log_dir
             else None
         )
+        own_pid = os.getpid()
 
         # Check if a task is already running
         if os.path.exists(temp_json_path):
             with open(temp_json_path, "r") as f:
                 task = json.load(f)
             pid = task.get("pid")
-            if pid and self.is_process_running(pid):
+            if pid and pid != own_pid and self.is_process_running(pid):
                 logger.info(
                     f"A task is already running: {task['command']} (PID: {pid}, Sandbox: {task['sandbox_name']}). "
                     "Waiting for it to finish before starting build."
@@ -55,8 +56,8 @@ class Metrics:
 
         start_time = datetime.now().isoformat()
         task_info = {
-            "command": "build",
-            "package_name": package_name,
+            "command": command,
+            "package": package_name,
             "start_time": start_time,
             "pid": os.getpid(),
             "sandbox_name": sandbox_name or "unknown",
@@ -69,7 +70,7 @@ class Metrics:
         if build_log_dir:
             temp_result = {
                 "package": package_name,
-                "command": "build",
+                "command": command,
                 "start_time": start_time,
                 "duration": 0.0,
                 "success": False,
@@ -94,7 +95,7 @@ class Metrics:
             if build_log_dir:
                 result = {
                     "package": package_name,
-                    "command": "build",
+                    "command": command,
                     "start_time": start_time,
                     "duration": duration,
                     "success": success,
@@ -123,12 +124,14 @@ class Metrics:
             os.path.join(self.base_dir, "temp_command_result.json") if log_dir else None
         )
 
+        own_pid = os.getpid()
+        
         # Check if a task is already running
         if os.path.exists(temp_json_path):
             with open(temp_json_path, "r") as f:
                 task = json.load(f)
             pid = task.get("pid")
-            if pid and self.is_process_running(pid):
+            if pid and pid != own_pid and self.is_process_running(pid):
                 logger.info(
                     f"A task is already running: {task['command']} (PID: {pid}, Sandbox: {task['sandbox_name']}). "
                     "Waiting for it to finish before starting command."
@@ -145,7 +148,7 @@ class Metrics:
         start_time = datetime.now().isoformat()
         task_info = {
             "command": command,
-            "package_name": package_name,
+            "package": package_name,
             "start_time": start_time,
             "pid": os.getpid(),
             "sandbox_name": sandbox_name or "unknown",
@@ -158,7 +161,7 @@ class Metrics:
         if log_dir:
             temp_result = {
                 "command": command,
-                "package_name": package_name,
+                "package": package_name,
                 "start_time": start_time,
                 "duration": 0.0,
                 "success": False,
@@ -175,26 +178,6 @@ class Metrics:
             success = True
         finally:
             duration = time.time() - start_time_seconds
-            if os.path.exists(temp_json_path):
-                os.remove(temp_json_path)
-            if temp_result_path and os.path.exists(temp_result_path):
-                os.remove(temp_result_path)
-
-            if log_dir:
-                result = {
-                    "command": command,
-                    "package_name": package_name,
-                    "start_time": start_time,
-                    "duration": duration,
-                    "success": success,
-                    "end_time": datetime.now().isoformat(),
-                    "sandbox_name": sandbox_name or "unknown",
-                }
-                os.makedirs(log_dir, exist_ok=True)
-                result_json_path = os.path.join(log_dir, "command_result.json")
-                with open(result_json_path, "w") as f:
-                    json.dump(result, f, indent=2)
-
             logger.info(
                 f"Command '{command}' {'succeeded' if success else 'failed'} in {duration:.2f}s"
             )

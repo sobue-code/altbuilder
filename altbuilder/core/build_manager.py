@@ -27,6 +27,7 @@ class BuildManager:
         no_check=False,
         hsh_extra="",
         rpmbuild_extra="",
+        command="build",
     ):
         """Build a package with the specified parameters."""
         if not self.environment.exists():
@@ -68,15 +69,14 @@ class BuildManager:
         if os.path.exists(self.environment.priorities):
             shutil.copy2(self.environment.priorities, priorities_file)
 
-        # Create log files
-        hasher_log = os.path.join(build_log_dir, "hasher_build.log")
         # Log file for gear command, named after the package
-        gear_log = os.path.join(build_log_dir, f"{package_name}.log")
+        log_file = os.path.join(build_log_dir, f"{package_name}.build.log")
 
         with self.metrics.track_build(
             package_name=package_name,
             build_log_dir=build_log_dir,
             sandbox_name=self.environment.name,
+            command=command,
         ):
             if is_src_rpm:
                 extra_args = shlex.split(hsh_extra) if hsh_extra else []
@@ -85,7 +85,7 @@ class BuildManager:
                     workdir=self.environment.hasher_dir,
                     apt_config=apt_conf or self.environment.apt_conf,
                     arch=self.environment.config["arch"],
-                    log_file=hasher_log,
+                    log_file=log_file,
                     extra_args=extra_args,
                 )
             else:
@@ -120,7 +120,7 @@ class BuildManager:
                     hasher_args=hasher_args,
                     build_log_dir=build_log_dir,
                     rpmbuild_args=rpmbuild_args if rpmbuild_args else None,
-                    log_file=gear_log,
+                    log_file=log_file,
                 )
 
             logger.info(f"Build logs saved to: {build_log_dir}")
