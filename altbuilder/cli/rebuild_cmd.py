@@ -167,9 +167,19 @@ def download_src_rpm(src_rpm_url, src_rpm_filename):
     "-s",
     help="Sandbox name (e.g., Sisyphus-x86_64). Defaults to <branch>-<arch> from config.",
 )
+@click.option(
+    "--no-check",
+    is_flag=True,
+    help="Do not run package tests (rpmbuild --without=check).",
+)
+@click.option(
+    "--rpmbuild-extra",
+    default="",
+    help="Extra flags to pass to rpmbuild (via --rpmbuild-args).",
+)
 @click.argument("package_name")
 @click.help_option("--help", "-h")
-def rebuild_cmd(sandbox, package_name):
+def rebuild_cmd(sandbox, no_check, rpmbuild_extra, package_name):
     """
     Rebuild a package in the specified sandbox by providing an exact package name.
     Fetches the corresponding src.rpm from the repository specified by the mirror,
@@ -177,6 +187,8 @@ def rebuild_cmd(sandbox, package_name):
 
     Args:
         sandbox (str): Optional sandbox name; defaults to branch-arch if not provided.
+        no_check (bool): If set, skips package tests during build.
+        rpmbuild_extra (str): Extra flags to pass to rpmbuild.
         package_name (str): Exact name of the package to rebuild (e.g., 'python3-module-hypothesis').
     """
     # Load the global configuration
@@ -310,9 +322,9 @@ def rebuild_cmd(sandbox, package_name):
             apt_conf=None,
             only_srpm=False,
             build_log_dir=build_log_dir,
-            no_check=False,
+            no_check=no_check,
             hsh_extra="",
-            rpmbuild_extra="",
+            rpmbuild_extra=rpmbuild_extra,
             command="rebuild",
         )
         click.echo(

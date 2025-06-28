@@ -32,6 +32,8 @@ def collect_build_logs(log_dir, sandbox=None, package=None):
                     builds.append({
                         "sandbox": sandbox_name,
                         "package": build_info.get("package", package_name),
+                        "version": build_info.get("version", "unknown"),
+                        "release": build_info.get("release", "unknown"),
                         "start_time": build_info.get("start_time", "N/A"),
                         "end_time": build_info.get("end_time", "N/A"),
                         "duration": build_info.get("duration", 0.0),
@@ -51,24 +53,45 @@ def format_build_logs(builds):
     table = Table(title="Build Logs", show_header=True, header_style="bold magenta")
     table.add_column("Sandbox", style="cyan")
     table.add_column("Package", style="cyan")
+    table.add_column("Version", style="cyan")
+    table.add_column("Release", style="cyan")
     table.add_column("Status", style="white")
     table.add_column("CMD", style="white")
     table.add_column("Duration (s)", style="white")
     table.add_column("Start Time", style="white")
-    table.add_column("End Time", style="white")
     table.add_column("Build Directory", style="white")
 
     for build in builds:
         status = "Success" if build["success"] else "Failed"
         status_style = "green" if build["success"] else "red"
+        # Reformat start time to 'YYYY-MM-DD H:M:S'
+        start_time_str = build["start_time"]
+        if start_time_str != "N/A":
+            try:
+                start_time = datetime.fromisoformat(start_time_str)
+                start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                pass
+        # Truncate version and release to 20 characters
+        version = (
+            build["version"][:17] + "..."
+            if len(build["version"]) > 20
+            else build["version"]
+        )
+        release = (
+            build["release"][:17] + "..."
+            if len(build["release"]) > 20
+            else build["release"]
+        )
         table.add_row(
             build["sandbox"],
             build["package"] or "N/A",
+            version,
+            release,
             f"[{status_style}]{status}[/{status_style}]",
             build["command"],
             f"{build['duration']:.2f}",
-            build["start_time"],
-            build["end_time"],
+            start_time_str,
             build["build_dir"]
         )
     return table

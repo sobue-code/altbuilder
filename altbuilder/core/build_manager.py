@@ -5,6 +5,7 @@ from datetime import datetime
 from ..exceptions import BuildError
 from ..utils.logger import logger
 from ..utils.metrics import Metrics
+from ..utils.helpers import get_spec_metadata
 from ..adapters.gear import GearAdapter
 from ..adapters.hasher import HasherAdapter
 
@@ -34,11 +35,16 @@ class BuildManager:
             self.environment.init()
 
         build_target = build_target or os.getcwd()
-        package_name = (
-            os.path.basename(build_target).replace(".src.rpm", "")
-            if is_src_rpm
-            else os.path.basename(build_target)
-        )
+        # Get package metadata
+        package_name, version, release = get_spec_metadata(build_target, is_src_rpm)
+        if not package_name:
+            package_name = (
+                os.path.basename(build_target).replace(".src.rpm", "")
+                if is_src_rpm
+                else os.path.basename(build_target)
+            )
+            version = "unknown"
+            release = "unknown"
         logger.info(f"Building {package_name} in {self.environment.name}")
 
         # If no build log directory specified, create one
@@ -69,7 +75,7 @@ class BuildManager:
         if os.path.exists(self.environment.priorities):
             shutil.copy2(self.environment.priorities, priorities_file)
 
-        # Log file for gear command, named after the package
+        # Log file for gear or hasher command, named after the package
         log_file = os.path.join(build_log_dir, f"{package_name}.build.log")
 
         with self.metrics.track_build(
@@ -77,9 +83,20 @@ class BuildManager:
             build_log_dir=build_log_dir,
             sandbox_name=self.environment.name,
             command=command,
+            version=version,
+            release=release,
         ):
             if is_src_rpm:
                 extra_args = shlex.split(hsh_extra) if hsh_extra else []
+                # Prepare rpmbuild args for src.rpm builds
+                rpmbuild_args = []
+                if rpmbuild_extra:
+                    rpmbuild_args.extend(shlex.split(rpmbuild_extra))
+                if no_check:
+                    rpmbuild_args.append("--without=check")
+                if rpmbuild_args:
+                    extra_args.append("--rpmbuild-args")
+                    extra_args.append(" ".join(rpmbuild_args))
                 self.hasher_adapter.build_from_srpm(
                     src_rpm=build_target,
                     workdir=self.environment.hasher_dir,
@@ -87,6 +104,8 @@ class BuildManager:
                     arch=self.environment.config["arch"],
                     log_file=log_file,
                     extra_args=extra_args,
+                    sandbox_name=self.environment.name,
+                    package_name=package_name,
                 )
             else:
                 hasher_args = [

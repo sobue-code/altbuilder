@@ -22,7 +22,7 @@ class Metrics:
             return False
 
     @contextmanager
-    def track_build(self, package_name, build_log_dir=None, sandbox_name=None, command="build"):
+    def track_build(self, package_name, build_log_dir=None, sandbox_name=None, command="build", version=None, release=None):
         """Track a package build process, saving temporary and result JSON files."""
         if not self.base_dir:
             raise ValueError("base_dir is required for tracking builds")
@@ -76,6 +76,8 @@ class Metrics:
                 "success": False,
                 "end_time": None,
                 "sandbox_name": sandbox_name or "unknown",
+                "version": version or "unknown",
+                "release": release or "unknown",
             }
             with open(temp_result_path, "w") as f:
                 json.dump(temp_result, f, indent=2)
@@ -101,6 +103,8 @@ class Metrics:
                     "success": success,
                     "end_time": datetime.now().isoformat(),
                     "sandbox_name": sandbox_name or "unknown",
+                    "version": version or "unknown",
+                    "release": release or "unknown",
                 }
                 os.makedirs(build_log_dir, exist_ok=True)
                 result_json_path = os.path.join(build_log_dir, "build_result.json")
@@ -148,7 +152,7 @@ class Metrics:
         start_time = datetime.now().isoformat()
         task_info = {
             "command": command,
-            "package": package_name,
+            "package": package_name or "unknown",
             "start_time": start_time,
             "pid": os.getpid(),
             "sandbox_name": sandbox_name or "unknown",
@@ -161,7 +165,7 @@ class Metrics:
         if log_dir:
             temp_result = {
                 "command": command,
-                "package": package_name,
+                "package": package_name or "unknown",
                 "start_time": start_time,
                 "duration": 0.0,
                 "success": False,
@@ -178,6 +182,26 @@ class Metrics:
             success = True
         finally:
             duration = time.time() - start_time_seconds
+            if os.path.exists(temp_json_path):
+                os.remove(temp_json_path)
+            if temp_result_path and os.path.exists(temp_result_path):
+                os.remove(temp_result_path)
+
+            if log_dir:
+                result = {
+                    "command": command,
+                    "package": package_name or "unknown",
+                    "start_time": start_time,
+                    "duration": duration,
+                    "success": success,
+                    "end_time": datetime.now().isoformat(),
+                    "sandbox_name": sandbox_name or "unknown",
+                }
+                os.makedirs(log_dir, exist_ok=True)
+                result_json_path = os.path.join(log_dir, "command_result.json")
+                with open(result_json_path, "w") as f:
+                    json.dump(result, f, indent=2)
+
             logger.info(
                 f"Command '{command}' {'succeeded' if success else 'failed'} in {duration:.2f}s"
             )
