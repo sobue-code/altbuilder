@@ -8,7 +8,7 @@ from ..config import load_config, get_sandbox_config
 from ..core.environment import Environment
 from ..core.build_manager import BuildManager
 from ..adapters.hasher import HasherAdapter
-from ..utils import init_logger, colorize, logger
+from ..utils import init_logger, colorize, logger, get_spec_metadata
 
 
 def get_local_repo_dir(mirror, branch):
@@ -233,7 +233,6 @@ def rebuild_cmd(sandbox, package_name):
     # Variable to track temporary file for cleanup
     temp_file = None
     src_rpm_path = None
-    full_package_name = None
 
     try:
         if mirror.startswith("file:"):
@@ -248,7 +247,6 @@ def rebuild_cmd(sandbox, package_name):
                     )
                 )
                 return
-            full_package_name = os.path.basename(src_rpm_path)
 
         elif mirror.startswith("http"):
             # Handle remote mirror
@@ -264,7 +262,6 @@ def rebuild_cmd(sandbox, package_name):
                 return
             temp_file = download_src_rpm(src_rpm_url, src_rpm_filename)
             src_rpm_path = temp_file
-            full_package_name = src_rpm_filename
 
         else:
             click.echo(
@@ -275,19 +272,26 @@ def rebuild_cmd(sandbox, package_name):
             )
             return
 
+        # Get package metadata
+        meta_name, version, release = get_spec_metadata(src_rpm_path, is_src_rpm=True)
+        if not meta_name:
+            meta_name = os.path.basename(src_rpm_path).replace(".src.rpm", "")
+            version = "unknown"
+            release = "unknown"
+
         logger.info(
-            f"Rebuilding package: {full_package_name} in sandbox: {sandbox_name}"
+            f"Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}"
         )
         click.echo(
             colorize(
-                f"Rebuilding package: {full_package_name} in sandbox: {sandbox_name}",
-                color="cyan",
+                f"Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}",
+                bold=True,
             )
         )
 
         # Set up build log directory and file
         log_dir = os.path.join(
-            sandbox_config["build_logs_dir"], sandbox_name, package_name
+            sandbox_config["build_logs_dir"], sandbox_name, meta_name
         )
         build_number = 1
         while os.path.exists(os.path.join(log_dir, f"build_{build_number}")):
@@ -313,7 +317,7 @@ def rebuild_cmd(sandbox, package_name):
         )
         click.echo(
             colorize(
-                f"Successfully rebuilt {full_package_name} (sandbox: {sandbox_name}).",
+                f"Successfully rebuilt {meta_name} (Version: {version}, Release: {release}) (sandbox: {sandbox_name}).",
                 color="green",
             )
         )
@@ -323,7 +327,7 @@ def rebuild_cmd(sandbox, package_name):
     except Exception as e:
         click.echo(
             colorize(
-                f"Failed to rebuild {full_package_name} (sandbox: {sandbox_name}).",
+                f"Failed to rebuild {meta_name if meta_name else package_name} (sandbox: {sandbox_name}).",
                 color="red",
             )
         )

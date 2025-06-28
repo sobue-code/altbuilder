@@ -1,8 +1,9 @@
 import os
 import click
+import subprocess
 from ..config import load_config
 from ..core.build_manager import BuildManager
-from ..utils import init_logger, colorize
+from ..utils import init_logger, colorize, get_spec_metadata
 from ..utils.setup_sandbox import setup_sandbox
 
 
@@ -59,17 +60,24 @@ def build_cmd(
     # Set up sandbox environment
     env = setup_sandbox(sandbox, branch, arch, reinit, config)
 
-    # Proceed with build
-    builder = BuildManager(env)
+    # Get package metadata
+    package_name, version, release = get_spec_metadata(build_target, is_src_rpm)
+    if not package_name:
+        package_name = (
+            os.path.basename(build_target).replace(".src.rpm", "")
+            if is_src_rpm
+            else os.path.basename(os.path.abspath(build_target))
+        )
+        version = "unknown"
+        release = "unknown"
 
-    # Get package name for logging purposes
-    package_name = (
-        os.path.basename(build_target).replace(".src.rpm", "")
-        if is_src_rpm
-        else os.path.basename(os.path.abspath(build_target))
+    # Log package metadata
+    click.echo(
+        colorize(
+            f"Building {package_name} (Version: {version}, Release: {release}) in sandbox: {env.name}",
+            bold=True,
+        )
     )
-
-    click.echo(colorize(f"Building {package_name} in sandbox: {env.name}", bold=True))
     log_dir = os.path.join(config["build_logs_dir"], env.name, package_name)
 
     # Create build-specific log directory
@@ -85,6 +93,7 @@ def build_cmd(
     init_logger(env.name, build_log_dir, config, build_log=build_log, cmd_log=cmd_log)
 
     # Perform the build
+    builder = BuildManager(env)
     builder.build(
         build_target=build_target,
         is_src_rpm=is_src_rpm,

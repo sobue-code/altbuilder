@@ -115,3 +115,56 @@ def open_with_file_manager(path, file_manager=None):
         click.echo(
             colorize(f"Failed to open {path} with {file_manager}: {e}", color="red")
         )
+
+
+def get_spec_metadata(build_target, is_src_rpm):
+    """Extract name, version, and release from a .spec file in the build_target directory or its subdirectories."""
+    if is_src_rpm:
+        # For src.rpm, use rpm to query metadata
+        try:
+            result = subprocess.run(
+                [
+                    "rpm",
+                    "-qp",
+                    "--queryformat",
+                    "%{NAME} %{VERSION} %{RELEASE}",
+                    build_target,
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            name, version, release = result.stdout.strip().split()
+            return name, version, release
+        except subprocess.CalledProcessError:
+            return None, None, None
+    else:
+        # For directory, recursively find .spec file
+        spec_path = None
+        search_dir = os.path.abspath(build_target)
+        for root, _, files in os.walk(search_dir):
+            for file in files:
+                if file.endswith(".spec"):
+                    spec_path = os.path.join(root, file)
+                    break
+            if spec_path:
+                break
+        if spec_path:
+            try:
+                result = subprocess.run(
+                    [
+                        "rpmspec",
+                        "-q",
+                        "--queryformat",
+                        "%{NAME} %{VERSION} %{RELEASE}",
+                        spec_path,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                name, version, release = result.stdout.strip().split()
+                return name, version, release
+            except subprocess.CalledProcessError:
+                pass
+        return None, None, None
