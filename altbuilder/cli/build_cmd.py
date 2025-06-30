@@ -21,6 +21,7 @@ from ..utils.setup_sandbox import setup_sandbox
     required=False,
     help="Branch name (e.g., Sisyphus). Overrides config.",
 )
+@click.option("--task", "-t", type=int, help="Attach task repository by ID.")
 @click.option(
     "--reinit", "-r", is_flag=True, help="Reinitialize the sandbox before building."
 )
@@ -40,7 +41,7 @@ from ..utils.setup_sandbox import setup_sandbox
 )
 @click.help_option("--help", "-h")
 def build_cmd(
-    build_target, arch, branch, reinit, sandbox, no_check, hsh_extra, rpmbuild_extra
+    build_target, arch, branch, task, reinit, sandbox, no_check, hsh_extra, rpmbuild_extra
 ):
     """Build a package in the specified sandbox. BUILD_TARGET can be a source directory or an src.rpm file."""
     config = load_config()
@@ -58,7 +59,7 @@ def build_cmd(
             build_target = os.getcwd()
 
     # Set up sandbox environment
-    env = setup_sandbox(sandbox, branch, arch, reinit, config)
+    env = setup_sandbox(sandbox, branch, arch, reinit, config, task_id=task)
 
     # Get package metadata
     package_name, version, release = get_spec_metadata(build_target, is_src_rpm)
