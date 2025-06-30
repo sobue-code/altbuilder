@@ -155,6 +155,7 @@ def get_spec_metadata(build_target, is_src_rpm):
                     [
                         "rpmspec",
                         "-q",
+                        "--srpm",
                         "--queryformat",
                         "%{NAME} %{VERSION} %{RELEASE}",
                         spec_path,
