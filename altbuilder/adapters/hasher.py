@@ -102,6 +102,7 @@ class HasherAdapter(ToolAdapter):
             "--verbose",
             f"--target={arch}",
             f"--workdir={workdir}",
+            "--lazy-cleanup",
             src_rpm,
         ]
         if extra_args:
