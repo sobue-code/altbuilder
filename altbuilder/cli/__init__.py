@@ -10,7 +10,9 @@ from .install_cmd import install_cmd
 from .run_cmd import run_cmd
 from .track_cmd import track_cmd
 from .stop_cmd import stop_cmd
-from .auxiliary_cmd import copy_pyproject_deps, rust_update_vendor, go_update_vendor
+from .copy_pyproject_deps_cmd import copy_pyproject_deps
+from .rust_update_vendor_cmd import rust_update_vendor
+from .go_update_vendor_cmd import go_update_vendor
 from .logs_cmd import logs_cmd
 from .copy_cmd import copy_group
 from ..config import load_config
@@ -22,28 +24,37 @@ class GroupedHelpGroup(click.Group):
         super().__init__(*args, **kwargs)
         self._commands = []
         self.command_groups = [
-            ("Sandbox Management", [
-                init_cmd,
-                list_cmd,
-                shell_cmd,
-                clean_cmd,
-                config_cmd,
-                install_cmd,
-                run_cmd,
-                track_cmd,
-                stop_cmd,
-                logs_cmd,
-            ]),
-            ("Build packages", [
-                build_cmd,
-                rebuild_cmd,
-            ]),
-            ("Auxiliary", [
-                copy_pyproject_deps,
-                rust_update_vendor,
-                go_update_vendor,
-                copy_group,
-            ]),
+            (
+                "Sandbox Management",
+                [
+                    init_cmd,
+                    list_cmd,
+                    shell_cmd,
+                    clean_cmd,
+                    config_cmd,
+                    install_cmd,
+                    run_cmd,
+                    track_cmd,
+                    stop_cmd,
+                    logs_cmd,
+                ],
+            ),
+            (
+                "Build packages",
+                [
+                    build_cmd,
+                    rebuild_cmd,
+                ],
+            ),
+            (
+                "Auxiliary",
+                [
+                    copy_pyproject_deps,
+                    rust_update_vendor,
+                    go_update_vendor,
+                    copy_group,
+                ],
+            ),
         ]
 
     def add_command(self, cmd, name=None):
