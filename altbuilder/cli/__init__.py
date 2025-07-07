@@ -15,6 +15,7 @@ from .rust_update_vendor_cmd import rust_update_vendor
 from .go_update_vendor_cmd import go_update_vendor
 from .logs_cmd import logs_cmd
 from .copy_cmd import copy_group
+from .update_submodules_cmd import update_submodules
 from ..config import load_config
 from ..utils.logger import init_logger, logger
 
@@ -53,6 +54,7 @@ class GroupedHelpGroup(click.Group):
                     rust_update_vendor,
                     go_update_vendor,
                     copy_group,
+                    update_submodules,
                 ],
             ),
         ]
@@ -108,6 +110,7 @@ cli.add_command(rebuild_cmd)
 cli.add_command(copy_pyproject_deps)
 cli.add_command(rust_update_vendor)
 cli.add_command(go_update_vendor)
+cli.add_command(update_submodules)
 cli.add_command(copy_group)
 
 
