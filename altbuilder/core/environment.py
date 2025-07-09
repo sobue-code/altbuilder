@@ -149,7 +149,7 @@ Debug::pkgProblemResolver "true";
 
         cmd = ["hsh", "--wait-lock", "--apt-config", self.apt_conf, "--initroot-only"]
         host_arch = get_host_arch()
-        if self.config["arch"] != host_arch:
+        if self.config["arch"] != host_arch and self.config["arch"] != "i586":
             run_logged_command(
                 ["rpm", "-q", "qemu-user-static"],
                 check=True,
