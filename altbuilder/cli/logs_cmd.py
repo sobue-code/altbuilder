@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.tree import Tree
 from rich.text import Text
 from rich.panel import Panel
+import difflib
 from ..config import load_config
 from ..utils import init_logger, colorize, open_with_file_manager, logger
 
@@ -188,6 +189,83 @@ def format_build_logs(
     )
 
 
+def get_spec_path(log_path, package):
+    """Find the spec file in the log directory."""
+    possible_specs = [
+        f"{package}.spec",
+        "package.spec",
+    ]
+    for spec_name in possible_specs:
+        spec_path = os.path.join(log_path, spec_name)
+        if os.path.exists(spec_path):
+            return spec_path
+    # Search for any .spec file if not found
+    for file in os.listdir(log_path):
+        if file.endswith(".spec"):
+            return os.path.join(log_path, file)
+    return None
+
+
+def display_spec_diff(build1, build2):
+    """Display colorized diff between two spec files using colorize."""
+    spec1_path = get_spec_path(build1["log_path"], build1["package"])
+    spec2_path = get_spec_path(build2["log_path"], build2["package"])
+
+    if not spec1_path:
+        click.echo(colorize(f"No spec file found for build {build1['build_dir']}", color="red"))
+        return
+    if not spec2_path:
+        click.echo(colorize(f"No spec file found for build {build2['build_dir']}", color="red"))
+        return
+
+    with open(spec1_path, "r") as f1, open(spec2_path, "r") as f2:
+        lines1 = f1.readlines()
+        lines2 = f2.readlines()
+
+    diff = difflib.unified_diff(
+        lines1,
+        lines2,
+        fromfile=f"{build1['build_dir']}/{os.path.basename(spec1_path)}",
+        tofile=f"{build2['build_dir']}/{os.path.basename(spec2_path)}",
+    )
+
+    for line in diff:
+        line = line.rstrip('\n')
+        if line.startswith('---') or line.startswith('+++'):
+            click.echo(colorize(line, color="yellow"))
+        elif line.startswith('@@'):
+            click.echo(colorize(line, color="cyan"))
+        elif line.startswith('-'):
+            click.echo(colorize(line, color="red"))
+        elif line.startswith('+'):
+            click.echo(colorize(line, color="green"))
+        else:
+            click.echo(line)
+
+
+def get_build_by_id(builds, id_str):
+    """Get build by index (number) or directory name, preferring 'build_{id}' for numeric ids if exists."""
+    try:
+        idx = int(id_str)
+        # First, check if there is a build with build_dir == f"build_{id_str}"
+        for build in builds:
+            if build["build_dir"] == f"build_{id_str}":
+                return build
+        # If not, use as index
+        if 1 <= idx <= len(builds):
+            return builds[idx - 1]
+        else:
+            click.echo(colorize(f"Index {idx} out of range (1-{len(builds)}).", color="red"))
+            return None
+    except ValueError:
+        # Assume directory name
+        for build in builds:
+            if build["build_dir"] == id_str:
+                return build
+        click.echo(colorize(f"Build directory '{id_str}' not found.", color="red"))
+        return None
+
+
 @click.command("logs")
 @click.option("--sandbox", "-s", help="Filter logs by sandbox name.")
 @click.option("--package", "-p", help="Filter logs by package name.")
@@ -216,9 +294,16 @@ def format_build_logs(
     is_flag=True,
     help="Expand build history to show all attempts.",
 )
+@click.option(
+    "--diff-spec",
+    "-d",
+    is_flag=True,
+    help="Enable spec diff mode. Compares last two builds if no IDs provided, or the specified two builds (directories or indices). Requires --package.",
+)
+@click.argument('diff_ids', nargs=-1, required=False)
 @click.help_option("--help", "-h")
 def logs_cmd(
-    sandbox, package, json_output, limit, f, file_manager, clean, expand_history
+    sandbox, package, json_output, limit, f, file_manager, clean, expand_history, diff_spec, diff_ids
 ):
     """Display or manage build logs for sandboxes and packages."""
     config = load_config()
@@ -229,6 +314,8 @@ def logs_cmd(
     log_dir = config["build_logs_dir"]
     if sandbox:
         log_dir = os.path.join(log_dir, sandbox)
+    if package:
+        log_dir = os.path.join(log_dir, package)
 
     # Handle --clean option
     if clean:
@@ -276,6 +363,32 @@ def logs_cmd(
             colorize("No build logs found matching the criteria.", color="yellow")
         )
         logger.info("No build logs found.")
+        return
+
+    if diff_spec:
+        if not package:
+            click.echo(colorize("Error: --diff-spec requires --package to be specified.", color="red"))
+            return
+
+        if len(diff_ids) == 0:
+            # Default: compare last two builds
+            if len(builds) < 2:
+                click.echo(colorize("Error: Need at least two builds to compare.", color="red"))
+                return
+            build1 = builds[1]  # Older (second latest)
+            build2 = builds[0]  # Newer (latest)
+        elif len(diff_ids) == 2:
+            id1, id2 = diff_ids
+            build1 = get_build_by_id(builds, id1)
+            build2 = get_build_by_id(builds, id2)
+            if not build1 or not build2:
+                return
+        else:
+            click.echo(colorize("Error: --diff-spec with IDs expects exactly two arguments.", color="red"))
+            return
+
+        click.echo(colorize(f"Comparing spec files (older to newer): {build1['build_dir']} to {build2['build_dir']}", bold=True, color="cyan"))
+        display_spec_diff(build1, build2)
         return
 
     if json_output:
