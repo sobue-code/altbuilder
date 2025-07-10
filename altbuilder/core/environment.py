@@ -226,6 +226,7 @@ Debug::pkgProblemResolver "true";
             cmd.append("--mount=/dev/pts")
             os.environ["share_network"] = "yes"
             os.environ["share_ipc"] = "yes"
+            self.enable_internet()
         cmd.append(self.hasher_dir)
 
         command_str = " ".join(cmd)

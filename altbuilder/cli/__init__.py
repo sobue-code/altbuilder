@@ -16,6 +16,7 @@ from .go_update_vendor_cmd import go_update_vendor
 from .logs_cmd import logs_cmd
 from .copy_cmd import copy_group
 from .update_submodules_cmd import update_submodules
+from .rpmdiff_cmd import rpmdiff_cmd
 from ..config import load_config
 from ..utils.logger import init_logger, logger
 
@@ -57,6 +58,7 @@ class GroupedHelpGroup(click.Group):
                     update_submodules,
                 ],
             ),
+            ("Package Management", [rpmdiff_cmd]),
         ]
 
     def add_command(self, cmd, name=None):
@@ -111,6 +113,7 @@ cli.add_command(copy_pyproject_deps)
 cli.add_command(rust_update_vendor)
 cli.add_command(go_update_vendor)
 cli.add_command(update_submodules)
+cli.add_command(rpmdiff_cmd)
 cli.add_command(copy_group)
 
 
