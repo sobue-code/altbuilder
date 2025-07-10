@@ -5,7 +5,7 @@ from datetime import datetime
 from ..exceptions import BuildError
 from ..utils.logger import logger
 from ..utils.metrics import Metrics
-from ..utils.helpers import get_spec_metadata
+from ..utils.helpers import get_spec_metadata, copy_spec_to_log_dir
 from ..adapters.gear import GearAdapter
 from ..adapters.hasher import HasherAdapter
 
@@ -74,6 +74,9 @@ class BuildManager:
 
         if os.path.exists(self.environment.priorities):
             shutil.copy2(self.environment.priorities, priorities_file)
+
+        # Copy the spec file to the build log directory
+        copy_spec_to_log_dir(build_target, is_src_rpm, build_log_dir, package_name)
 
         # Log file for gear or hasher command, named after the package
         log_file = os.path.join(build_log_dir, f"{package_name}.build.log")

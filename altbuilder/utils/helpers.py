@@ -2,6 +2,7 @@ import os
 import platform
 import subprocess
 import shutil
+import shlex
 from .logger import logger, cmd_logger
 
 
@@ -169,3 +170,47 @@ def get_spec_metadata(build_target, is_src_rpm):
             except subprocess.CalledProcessError:
                 pass
         return None, None, None
+
+
+def copy_spec_to_log_dir(build_target, is_src_rpm, build_log_dir, package_name):
+    """Copy or extract the spec file to the build log directory."""
+    if not is_src_rpm:
+        spec_path = None
+        search_dir = os.path.abspath(build_target)
+        for root, _, files in os.walk(search_dir):
+            for file in files:
+                if file.endswith(".spec"):
+                    spec_path = os.path.join(root, file)
+                    break
+            if spec_path:
+                break
+        if spec_path:
+            dest = os.path.join(build_log_dir, os.path.basename(spec_path))
+            shutil.copy2(spec_path, dest)
+            logger.info(f"Copied spec file to {dest}")
+        else:
+            logger.warning(f"No spec file found in {build_target}")
+    else:
+        try:
+            result = (
+                subprocess.check_output(["rpm", "-qpl", build_target])
+                .decode()
+                .splitlines()
+            )
+            spec_file = next((f for f in result if f.endswith(".spec")), None)
+            if spec_file:
+                cwd = os.getcwd()
+                os.chdir(build_log_dir)
+                abs_build_target = os.path.abspath(build_target)
+                cmd = f"rpm2cpio {shlex.quote(abs_build_target)} | cpio -idmv --no-absolute-filenames {shlex.quote(spec_file)}"
+                subprocess.run(cmd, shell=True, check=True)
+                extracted_spec = os.path.join(build_log_dir, spec_file)
+                dest = os.path.join(build_log_dir, f"{package_name}.spec")
+                if os.path.basename(extracted_spec) != f"{package_name}.spec":
+                    os.rename(extracted_spec, dest)
+                os.chdir(cwd)
+                logger.info(f"Extracted spec file to {dest}")
+            else:
+                logger.warning(f"No spec file found in {build_target}")
+        except Exception as e:
+            logger.warning(f"Failed to extract spec from {build_target}: {e}")
