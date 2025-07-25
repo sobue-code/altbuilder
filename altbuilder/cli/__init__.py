@@ -13,6 +13,7 @@ from .stop_cmd import stop_cmd
 from .copy_pyproject_deps_cmd import copy_pyproject_deps
 from .rust_update_vendor_cmd import rust_update_vendor
 from .go_update_vendor_cmd import go_update_vendor
+from .merge_tag_cmd import merge_tag_cmd
 from .logs_cmd import logs_cmd
 from .copy_cmd import copy_group
 from .update_submodules_cmd import update_submodules
@@ -56,6 +57,7 @@ class GroupedHelpGroup(click.Group):
                     go_update_vendor,
                     copy_group,
                     update_submodules,
+                    merge_tag_cmd,
                 ],
             ),
             ("Package Management", [rpmdiff_cmd]),
@@ -113,6 +115,7 @@ cli.add_command(copy_pyproject_deps)
 cli.add_command(rust_update_vendor)
 cli.add_command(go_update_vendor)
 cli.add_command(update_submodules)
+cli.add_command(merge_tag_cmd)
 cli.add_command(rpmdiff_cmd)
 cli.add_command(copy_group)
 
