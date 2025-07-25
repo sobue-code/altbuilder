@@ -13,6 +13,7 @@ from .stop_cmd import stop_cmd
 from .copy_pyproject_deps_cmd import copy_pyproject_deps
 from .rust_update_vendor_cmd import rust_update_vendor
 from .go_update_vendor_cmd import go_update_vendor
+from .npm_update_vendor_cmd import npm_update_vendor
 from .merge_tag_cmd import merge_tag_cmd
 from .logs_cmd import logs_cmd
 from .copy_cmd import copy_group
@@ -55,6 +56,7 @@ class GroupedHelpGroup(click.Group):
                     copy_pyproject_deps,
                     rust_update_vendor,
                     go_update_vendor,
+                    npm_update_vendor,
                     copy_group,
                     update_submodules,
                     merge_tag_cmd,
@@ -114,6 +116,7 @@ cli.add_command(rebuild_cmd)
 cli.add_command(copy_pyproject_deps)
 cli.add_command(rust_update_vendor)
 cli.add_command(go_update_vendor)
+cli.add_command(npm_update_vendor)
 cli.add_command(update_submodules)
 cli.add_command(merge_tag_cmd)
 cli.add_command(rpmdiff_cmd)
