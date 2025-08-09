@@ -1,26 +1,29 @@
 import click
-from .init_cmd import init_cmd
-from .build_cmd import build_cmd
-from .rebuild_cmd import rebuild_cmd
-from .list_cmd import list_cmd
-from .shell_cmd import shell_cmd
-from .clean_cmd import clean_cmd
-from .config_cmd import config_cmd
-from .install_cmd import install_cmd
-from .run_cmd import run_cmd
-from .track_cmd import track_cmd
-from .stop_cmd import stop_cmd
-from .copy_pyproject_deps_cmd import copy_pyproject_deps
-from .rust_update_vendor_cmd import rust_update_vendor
-from .go_update_vendor_cmd import go_update_vendor
-from .npm_update_vendor_cmd import npm_update_vendor
-from .merge_tag_cmd import merge_tag_cmd
-from .logs_cmd import logs_cmd
-from .copy_cmd import copy_group
-from .update_submodules_cmd import update_submodules
-from .rpmdiff_cmd import rpmdiff_cmd
+from click.shell_completion import CompletionItem
+
 from ..config import load_config
 from ..utils.logger import init_logger, logger
+from .build_cmd import build_cmd
+from .clean_cmd import clean_cmd
+from .config_cmd import config_cmd
+from .copy_cmd import copy_group
+from .copy_pyproject_deps_cmd import copy_pyproject_deps
+from .go_update_vendor_cmd import go_update_vendor
+from .init_cmd import init_cmd
+from .install_cmd import install_cmd
+from .list_cmd import list_cmd
+from .logs_cmd import logs_cmd
+from .merge_tag_cmd import merge_tag_cmd
+from .npm_update_vendor_cmd import npm_update_vendor
+from .rebuild_cmd import rebuild_cmd
+from .rpmdiff_cmd import rpmdiff_cmd
+from .run_cmd import run_cmd
+from .rust_update_vendor_cmd import rust_update_vendor
+from .shell_cmd import shell_cmd
+from .stop_cmd import stop_cmd
+from .track_cmd import track_cmd
+from .update_submodules_cmd import update_submodules
+from .completion_cmd import completion_cmd
 
 
 class GroupedHelpGroup(click.Group):
@@ -60,6 +63,7 @@ class GroupedHelpGroup(click.Group):
                     copy_group,
                     update_submodules,
                     merge_tag_cmd,
+                    completion_cmd,
                 ],
             ),
             ("Package Management", [rpmdiff_cmd]),
@@ -121,7 +125,7 @@ cli.add_command(update_submodules)
 cli.add_command(merge_tag_cmd)
 cli.add_command(rpmdiff_cmd)
 cli.add_command(copy_group)
-
+cli.add_command(completion_cmd)
 
 if __name__ == "__main__":
     cli()
