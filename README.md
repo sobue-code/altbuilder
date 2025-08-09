@@ -15,7 +15,6 @@ A command-line tool for managing ALT Linux sandboxes, building packages, and han
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 
-
 ## Features
 
 - **Sandbox Management**: Create, manage, and clean isolated build environments
@@ -27,7 +26,6 @@ A command-line tool for managing ALT Linux sandboxes, building packages, and han
 - **Repository Integration**: Support for ALT Linux repositories and task-specific builds
 - **Development Tools**: Utilities for Rust, Go, and Python dependency management
 
-
 ## Requirements
 
 ### System Requirements
@@ -35,7 +33,6 @@ A command-line tool for managing ALT Linux sandboxes, building packages, and han
 - **Operating System**: ALT Linux (Sisyphus or stable branches)
 - **Python**: 3.11 or higher
 - **Architecture**: x86_64 (primary), with cross-compilation support for others
-
 
 ### Required System Packages
 
@@ -52,7 +49,6 @@ sudo apt-get install python3 python3-pip
 sudo apt-get install qemu-user-static qemu-user-static-binfmt
 ```
 
-
 #### Architecture-specific Packages
 
 For cross-compilation to specific architectures:
@@ -64,7 +60,6 @@ sudo apt-get install qemu-user-static-aarch64 qemu-user-static-binfmt-aarch64
 # For other architectures, install corresponding qemu-user-static-<arch> packages
 ```
 
-
 #### Optional Dependencies
 
 ```bash
@@ -74,7 +69,6 @@ sudo apt-get install mc  # or ranger
 # Development tools
 sudo apt-get install git golang rust-cargo  # for vendor update commands
 ```
-
 
 ### Python Dependencies
 
@@ -88,35 +82,35 @@ The following Python packages are automatically installed:
 - `rich` (>=14.0.0): Rich text and formatting for terminal
 - `psutil` (>=7.0.0): System and process utilities
 
-
 ## Installation
 
 ### From Source
 
 1. Clone the repository:
+
 ```bash
 git clone <repository-url>
 cd altbuilder
 ```
 
 2. Install using Poetry (recommended):
+
 ```bash
 pip install poetry
 poetry install
 ```
 
 3. Or install using pip:
+
 ```bash
 pip install .
 ```
-
 
 ### Verify Installation
 
 ```bash
 altbuilder --help
 ```
-
 
 ## Quick Start
 
@@ -127,7 +121,6 @@ Generate a user-specific configuration:
 ```bash
 altbuilder config --init
 ```
-
 
 ### 2. Create Your First Sandbox
 
@@ -142,7 +135,6 @@ Or specify custom parameters:
 ```bash
 altbuilder init --branch Sisyphus --arch x86_64
 ```
-
 
 ### 3. Build a Package
 
@@ -165,7 +157,6 @@ Rebuild a package from repository:
 altbuilder rebuild package-name
 ```
 
-
 ### 4. Manage Sandboxes
 
 List all sandboxes:
@@ -185,7 +176,6 @@ Clean up sandboxes:
 ```bash
 altbuilder clean --all
 ```
-
 
 ## Configuration
 
@@ -215,7 +205,6 @@ environment_dir = "/tmp/.private/username/altbuilder/environments"
 build_logs_dir = "/home/username/.altbuilder/builds"
 ```
 
-
 #### Sandbox-specific Settings
 
 ```toml
@@ -230,7 +219,6 @@ branch = "p11"
 arch = "aarch64"
 ```
 
-
 #### Logging Configuration
 
 ```toml
@@ -240,7 +228,6 @@ file_level = "DEBUG"         # File log level
 rotation = "10 MB"           # Log rotation size
 format = "{time} | {level} | {message}"
 ```
-
 
 ### Configuration Management
 
@@ -262,6 +249,19 @@ Reinitialize configuration:
 altbuilder config --init --force
 ```
 
+#### `altbuilder completion`
+
+Generate and optionally install shell completion scripts for bash, zsh, or fish to enable command autocompletion.
+
+```bash
+altbuilder completion zsh
+altbuilder completion zsh --install
+```
+
+Options:
+
+- `shell`: Shell type (`bash`, `zsh`, or `fish`)
+- `--install`: Install the completion script to the shell’s configuration directory and provide sourcing instruction
 
 ## Commands
 
@@ -279,7 +279,6 @@ Options:
 - `--reinit, -r`: Reinitialize existing sandbox
 - `--sandbox, -s`: Custom sandbox name
 
-
 #### `altbuilder list`
 
 List all existing sandboxes with metadata.
@@ -289,7 +288,6 @@ Options:
 - `--sandbox, -s`: Show details for specific sandbox
 - `-f`: Open sandbox directory in file manager
 - `--file-manager`: Specify file manager (mc, ranger)
-
 
 #### `altbuilder shell`
 
@@ -301,7 +299,6 @@ Options:
 - `--root`: Run shell as root
 - `--internet`: Enable internet access
 
-
 #### `altbuilder clean`
 
 Clean sandbox environments.
@@ -311,7 +308,6 @@ Options:
 - `--sandbox, -s`: Specific sandbox to clean
 - `--all`: Clean all sandboxes
 
-
 #### `altbuilder install`
 
 Install packages into sandbox.
@@ -320,7 +316,6 @@ Install packages into sandbox.
 altbuilder install package1 package2 ...
 ```
 
-
 #### `altbuilder run`
 
 Execute commands in sandbox.
@@ -328,7 +323,6 @@ Execute commands in sandbox.
 ```bash
 altbuilder run -- command arg1 arg2
 ```
-
 
 ### Package Building
 
@@ -347,7 +341,6 @@ Options:
 - `--hsh-extra`: Extra flags for hsh
 - `--rpmbuild-extra`: Extra flags for rpmbuild
 
-
 #### `altbuilder rebuild`
 
 Rebuild a package from repository.
@@ -362,7 +355,6 @@ Options:
 - `--no-check`: Skip package tests
 - `--rpmbuild-extra`: Extra rpmbuild flags
 
-
 ### Task Management
 
 #### `altbuilder track`
@@ -373,7 +365,6 @@ Options:
 
 - `--watch`: Continuously monitor (real-time updates)
 
-
 #### `altbuilder stop`
 
 Stop running tasks.
@@ -381,7 +372,6 @@ Stop running tasks.
 Options:
 
 - `--force`: Force stop without confirmation
-
 
 #### `altbuilder logs`
 
@@ -398,7 +388,6 @@ Options:
 - `--expand-history, -e`: Show detailed build history
 - `--diff-spec, -d`: Compare spec files between builds
 
-
 ### Utility Commands
 
 #### `altbuilder copy`
@@ -412,7 +401,6 @@ altbuilder copy to-sandbox /host/path /sandbox/path
 # Copy from sandbox
 altbuilder copy from-sandbox /sandbox/path /host/path
 ```
-
 
 #### `altbuilder rpmdiff`
 
@@ -429,14 +417,13 @@ Options:
 - `--conflicts`: Compare conflicts
 - `--files`: Compare file lists
 
-
 #### Development Utilities
 
 ```bash
 # Update Rust vendor dependencies
 altbuilder rust-update-vendor [tag]
 
-# Update Go vendor dependencies  
+# Update Go vendor dependencies
 altbuilder go-update-vendor [tag]
 
 # Copy Python project dependencies
@@ -446,7 +433,6 @@ altbuilder copy-pyproject-deps
 altbuilder update-submodules tag
 ```
 
-
 ## Cross-compilation
 
 altbuilder supports cross-compilation using QEMU user-mode emulation.
@@ -454,11 +440,13 @@ altbuilder supports cross-compilation using QEMU user-mode emulation.
 ### Setup for Cross-compilation
 
 1. Install QEMU static binaries:
+
 ```bash
 sudo apt-get install qemu-user-static qemu-user-static-binfmt
 ```
 
 2. For specific architectures:
+
 ```bash
 # ARM64/aarch64
 sudo apt-get install qemu-user-static-aarch64 qemu-user-static-binfmt-aarch64
@@ -468,10 +456,10 @@ sudo apt-get install qemu-user-static-<arch> qemu-user-static-binfmt-<arch>
 ```
 
 3. Restart binfmt service:
+
 ```bash
 sudo systemctl restart systemd-binfmt
 ```
-
 
 ### Verify Cross-compilation Setup
 
@@ -503,67 +491,72 @@ Rebuild package for different architecture:
 altbuilder rebuild --sandbox Sisyphus-aarch64 package-name
 ```
 
-
 ## Examples
 
 ### Basic Workflow
 
 1. **Setup environment:**
+
 ```bash
 altbuilder config --init
 altbuilder init
 ```
 
 2. **Build a package:**
+
 ```bash
 cd my-package/
 altbuilder build
 ```
 
 3. **Check build logs:**
+
 ```bash
 altbuilder logs --package my-package
 ```
 
-
 ### Cross-compilation Workflow
 
 1. **Setup cross-compilation:**
+
 ```bash
 sudo apt-get install qemu-user-static qemu-user-static-aarch64 qemu-user-static-binfmt
 sudo systemctl restart systemd-binfmt
 ```
 
 2. **Create ARM64 sandbox:**
+
 ```bash
 altbuilder init --arch aarch64 --sandbox my-aarch64-build
 ```
 
 3. **Build for ARM64:**
+
 ```bash
 altbuilder build --sandbox my-aarch64-build
 ```
 
-
 ### Development Workflow
 
 1. **Update dependencies:**
+
 ```bash
 altbuilder rust-update-vendor v1.0.0
 altbuilder go-update-vendor v2.0.0
 ```
 
 2. **Test in sandbox:**
+
 ```bash
 altbuilder shell --internet
 altbuilder run -- make test
 ```
 
 3. **Compare package versions:**
+
 ```bash
 altbuilder rpmdiff old-package.rpm new-package.rpm --files
 ```
-
 
 ## Troubleshooting
 
@@ -586,7 +579,6 @@ Verify setup:
 cat /proc/sys/fs/binfmt_misc/qemu-aarch64
 ```
 
-
 ### Debug Mode
 
 Enable verbose logging:
@@ -601,7 +593,6 @@ View detailed logs:
 ```bash
 tail -f ~/.altbuilder/altbuilder.log
 ```
-
 
 ### Getting Help
 
