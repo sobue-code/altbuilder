@@ -1,9 +1,11 @@
 import os
-import click
 import subprocess
-from ..config import load_config, get_sandbox_config
+
+import click
+
+from ..config import get_sandbox_config, load_config
 from ..core.environment import Environment
-from ..utils import init_logger, logger, colorize
+from ..utils import colorize, init_logger, logger
 from ..utils.metrics import Metrics
 
 
@@ -87,13 +89,56 @@ def go_update_vendor(sandbox, reinit, tag):
 
     try:
         env.copy_from("/usr/src/package_go/vendor", "./vendor")
-        click.echo(
-            colorize(f"Go vendor dependencies updated successfully.", color="green")
+        # Check if vendor directory is already tracked in git
+        vendor_tracked = False
+        try:
+            subprocess.run(
+                ["git", "ls-files", "vendor"],
+                capture_output=True,
+                check=True,
+                text=True,
+            )
+            vendor_tracked = True
+        except subprocess.CalledProcessError:
+            vendor_tracked = False
+
+        # Stage the vendor directory
+        subprocess.run(["git", "add", "vendor"], check=True)
+
+        # Commit with appropriate message
+        commit_message = (
+            "Update Go dependencies" if vendor_tracked else "Vendoring Go dependencies"
         )
-        logger.info(f"Go vendor dependencies updated in sandbox {sandbox_name}")
+        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+
+        click.echo(
+            colorize(
+                f"""Go vendor dependencies updated and committed successfully.
+                    Don't forget to add the following line to your .gear/rules:
+                    
+                    tar: vendor name=vendor
+                    
+                    And this to your .spec:
+                    
+                    SourceX: vendor.tar
+
+                    %setup -a X
+                """,
+                color="green",
+            )
+        )
+        logger.info(
+            f"Go vendor dependencies updated and committed in sandbox {sandbox_name}"
+        )
     except EnvironmentError as e:
         logger.error(f"Failed to update Go vendor dependencies: {e}")
         click.echo(
             colorize(f"Failed to update Go vendor dependencies: {e}", color="red")
+        )
+        raise
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to commit Go vendor dependencies: {e}")
+        click.echo(
+            colorize(f"Failed to commit Go vendor dependencies: {e}", color="red")
         )
         raise

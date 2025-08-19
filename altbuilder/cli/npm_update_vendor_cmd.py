@@ -1,9 +1,11 @@
 import os
-import click
 import subprocess
-from ..config import load_config, get_sandbox_config
+
+import click
+
+from ..config import get_sandbox_config, load_config
 from ..core.environment import Environment
-from ..utils import init_logger, logger, colorize
+from ..utils import colorize, init_logger, logger
 from ..utils.metrics import Metrics
 
 
@@ -91,13 +93,58 @@ def npm_update_vendor(sandbox, reinit, tag):
     # Copy node_modules from sandbox to host using copy_from
     try:
         env.copy_from("/usr/src/package_nodejs/node_modules", "./node_modules")
-        click.echo(
-            colorize(f"NPM vendor dependencies updated successfully.", color="green")
+        # Check if node_modules directory is already tracked in git
+        node_modules_tracked = False
+        try:
+            subprocess.run(
+                ["git", "ls-files", "node_modules"],
+                capture_output=True,
+                check=True,
+                text=True,
+            )
+            node_modules_tracked = True
+        except subprocess.CalledProcessError:
+            node_modules_tracked = False
+
+        # Stage the node_modules directory
+        subprocess.run(["git", "add", "node_modules"], check=True)
+
+        # Commit with appropriate message
+        commit_message = (
+            "Update NPM dependencies"
+            if node_modules_tracked
+            else "Vendoring NPM dependencies"
         )
-        logger.info(f"NPM vendor dependencies updated in sandbox {sandbox_name}")
+        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+
+        click.echo(
+            colorize(
+                f"""NPM vendor dependencies updated and committed successfully.
+                    Don't forget to add the following line to your .gear/rules:
+
+                    tar: node_modules name=node_modules
+
+                    And this to your .spec:
+
+                    SourceX: node_modules.tar
+
+                    %setup -a X
+                """,
+                color="green",
+            )
+        )
+        logger.info(
+            f"NPM vendor dependencies updated and committed in sandbox {sandbox_name}"
+        )
     except EnvironmentError as e:
         logger.error(f"Failed to update NPM vendor dependencies: {e}")
         click.echo(
             colorize(f"Failed to update NPM vendor dependencies: {e}", color="red")
+        )
+        raise
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to commit NPM vendor dependencies: {e}")
+        click.echo(
+            colorize(f"Failed to commit NPM vendor dependencies: {e}", color="red")
         )
         raise
