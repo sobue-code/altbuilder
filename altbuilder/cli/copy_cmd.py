@@ -1,68 +1,91 @@
-import click
-from ..config import load_config, get_sandbox_config
+from typing import Optional
+
+import typer
+
+from ..config import get_sandbox_config, load_config
 from ..core.environment import Environment
-from ..utils import init_logger, colorize
+from ..utils import colorize, init_logger
+
+app = typer.Typer(help="Copy files or directories between host and sandbox.")
+copy_app = typer.Typer(help="Copy commands group.")
+
+app.add_typer(copy_app, name="copy")
 
 
-@click.group("copy")
-@click.option(
-    "--sandbox", "-s", help="Sandbox name. Defaults to <branch>-<arch> from config."
-)
-@click.pass_context
-@click.help_option("--help", "-h")
-def copy_group(ctx, sandbox):
-    """Copy files or directories between host and sandbox."""
+def get_env(sandbox: Optional[str]) -> Environment:
     config = load_config()
     sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
     sandbox_config = get_sandbox_config(sandbox_name, config)
     init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
     env = Environment(sandbox_name, sandbox_config)
     if not env.exists():
-        click.echo(
+        typer.echo(
             colorize(
                 f"Sandbox {sandbox_name} does not exist. Please initialize it first.",
                 color="red",
             )
         )
-        raise click.Abort()
-    ctx.obj = {"env": env}
+        raise typer.Exit(code=1)
+    return env
 
 
-@copy_group.command("to-sandbox")
-@click.argument("host_path", type=click.Path(exists=True))
-@click.argument("sandbox_path")
-@click.pass_context
-def copy_to_sandbox(ctx, host_path, sandbox_path):
-    """Copy from host to sandbox: altbuilder copy to-sandbox <host_path> <sandbox_path>"""
-    env = ctx.obj["env"]
+@copy_app.command("to-sandbox")
+def copy_to_sandbox(
+    host_path: str = typer.Argument(
+        ..., exists=True, help="Path on the host to copy from."
+    ),
+    sandbox_path: str = typer.Argument(
+        ..., help="Destination path inside the sandbox."
+    ),
+    sandbox: Optional[str] = typer.Option(
+        None,
+        "--sandbox",
+        "-s",
+        help="Sandbox name. Defaults to <branch>-<arch> from config.",
+    ),
+):
+    """Copy files or directories from host to sandbox."""
+    env = get_env(sandbox)
     try:
         env.copy_to(host_path, sandbox_path)
-        click.echo(
+        typer.echo(
             colorize(
                 f"Copied {host_path} to {sandbox_path} in sandbox {env.name}",
                 color="green",
             )
         )
     except EnvironmentError as e:
-        click.echo(colorize(f"Error: {e}", color="red"))
-        raise
+        typer.echo(colorize(f"Error: {e}", color="red"))
+        raise typer.Exit(code=1)
 
 
-@copy_group.command("from-sandbox")
-@click.argument("sandbox_path")
-@click.argument("host_path", type=click.Path())
-@click.pass_context
-def copy_from_sandbox(ctx, sandbox_path, host_path):
-    """Copy from sandbox to host: altbuilder copy from-sandbox <sandbox_path> <host_path>"""
-    env = ctx.obj["env"]
+@copy_app.command("from-sandbox")
+def copy_from_sandbox(
+    sandbox_path: str = typer.Argument(
+        ..., help="Path inside the sandbox to copy from."
+    ),
+    host_path: str = typer.Argument(..., help="Destination path on the host."),
+    sandbox: Optional[str] = typer.Option(
+        None,
+        "--sandbox",
+        "-s",
+        help="Sandbox name. Defaults to <branch>-<arch> from config.",
+    ),
+):
+    """Copy files or directories from sandbox to host."""
+    env = get_env(sandbox)
     try:
         env.copy_from(sandbox_path, host_path)
-        click.echo(
+        typer.echo(
             colorize(
                 f"Copied {sandbox_path} from sandbox {env.name} to {host_path}",
                 color="green",
             )
         )
     except EnvironmentError as e:
-        click.echo(colorize(f"Error: {e}", color="red"))
-        raise
+        typer.echo(colorize(f"Error: {e}", color="red"))
+        raise typer.Exit(code=1)
+
+
+if __name__ == "__main__":
+    app()

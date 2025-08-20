@@ -1,112 +1,57 @@
 import os
 import re
-import requests
-from bs4 import BeautifulSoup
 import tempfile
-import click
-from ..config import load_config, get_sandbox_config
-from ..core.environment import Environment
-from ..core.build_manager import BuildManager
+
+import requests
+import typer
+from bs4 import BeautifulSoup
+
 from ..adapters.hasher import HasherAdapter
-from ..utils import init_logger, colorize, logger, get_spec_metadata
+from ..config import get_sandbox_config, load_config
+from ..core.build_manager import BuildManager
+from ..core.environment import Environment
+from ..utils import colorize, get_spec_metadata, init_logger, logger
 
 
-def get_local_repo_dir(mirror, branch):
-    """
-    Constructs the local repository directory path based on the mirror and branch.
-
-    Args:
-        mirror (str): The mirror URL (e.g., 'file:/mnt/repo').
-        branch (str): The branch name (e.g., 'Sisyphus').
-
-    Returns:
-        str: The path to the SRPMS directory.
-
-    Raises:
-        ValueError: If the mirror URL is not a valid local file path.
-    """
+def get_local_repo_dir(mirror, branch: str) -> str:
+    """Return local repo directory path for given mirror and branch."""
     if not mirror.startswith("file:"):
         raise ValueError("Invalid local mirror URL: must start with 'file:'")
-    local_path = mirror[5:]  # Remove 'file:' prefix
+    local_path = mirror[5:]
     if branch.lower() == "sisyphus":
         return os.path.join(local_path, branch.lower(), "last", "files", "SRPMS")
-    else:
-        return None
+    return None
 
 
-def find_src_rpm_local(repo_dir, package_name):
-    """
-    Searches the local repository directory for the latest matching src.rpm file with exact name.
-
-    Args:
-        repo_dir (str): The local SRPMS directory path.
-        package_name (str): The exact package name to search for (e.g., 'python3-module-hypothesis').
-
-    Returns:
-        str or None: The full path to the latest matching src.rpm file, or None if not found.
-
-    Raises:
-        ValueError: If the repository directory is inaccessible.
-    """
+def find_src_rpm_local(repo_dir: str, package_name: str) -> str | None:
+    """Search local SRPMS dir for latest matching src.rpm file by exact name."""
     try:
         files = os.listdir(repo_dir)
-    except FileNotFoundError:
-        raise ValueError(f"Repository directory not found or inaccessible: {repo_dir}")
-    except PermissionError:
-        raise ValueError(
-            f"Permission denied accessing repository directory: {repo_dir}"
-        )
+    except (FileNotFoundError, PermissionError) as e:
+        raise ValueError(f"Repository directory inaccessible: {e}")
 
-    # Pattern for exact match: package_name-<version>-<release>.src.rpm
     pattern = re.compile(
         rf"^{re.escape(package_name)}-[0-9][0-9a-zA-Z._%+-]+-[0-9a-zA-Z._%+-]+\.src\.rpm$"
     )
-    matching_files = [f for f in files if pattern.match(f)]
-
+    matching_files = sorted([f for f in files if pattern.match(f)])
     if not matching_files:
         return None
-
-    matching_files.sort()  # Sort to get the highest version last
-    latest_file = matching_files[-1]
-    return os.path.join(repo_dir, latest_file)
+    return os.path.join(repo_dir, matching_files[-1])
 
 
-def get_remote_repo_url(mirror, branch):
-    """
-    Constructs the remote repository URL based on the mirror and branch.
-
-    Args:
-        mirror (str): The mirror URL (e.g., 'http://ftp.altlinux.org/pub/distributions').
-        branch (str): The branch name (e.g., 'Sisyphus').
-
-    Returns:
-        str: The URL to the SRPMS directory.
-
-    Raises:
-        ValueError: If the mirror URL is not a valid HTTP URL.
-    """
+def get_remote_repo_url(mirror: str, branch: str) -> str:
+    """Build remote repo SRPMS URL."""
     if not mirror.startswith("http"):
         raise ValueError("Invalid remote mirror URL: must start with 'http'")
     if branch.lower() == "sisyphus":
         return f"{mirror}/ALTLinux/{branch}/files/SRPMS/"
-    else:
-        return f"{mirror}/ALTLinux/{branch}/branch/SRPMS/"
+    return f"{mirror}/ALTLinux/{branch}/branch/SRPMS/"
 
 
-def find_src_rpm_remote(repo_url, package_name):
-    """
-    Searches the remote repository for the latest matching src.rpm file with exact name.
-
-    Args:
-        repo_url (str): The URL to the SRPMS directory.
-        package_name (str): The exact package name to search for (e.g., 'python3-module-hypothesis').
-
-    Returns:
-        tuple: (src_rpm_url, src_rpm_filename) or (None, None) if not found.
-
-    Raises:
-        ValueError: If the repository cannot be accessed.
-    """
+def find_src_rpm_remote(
+    repo_url: str, package_name: str
+) -> tuple[str | None, str | None]:
+    """Search remote SRPMS dir for latest matching src.rpm file by exact name."""
     try:
         response = requests.get(repo_url, timeout=10)
         response.raise_for_status()
@@ -114,37 +59,19 @@ def find_src_rpm_remote(repo_url, package_name):
         raise ValueError(f"Failed to access remote repository {repo_url}: {e}")
 
     soup = BeautifulSoup(response.text, "html.parser")
-    links = soup.find_all("a", href=True)
+    links = [link["href"] for link in soup.find_all("a", href=True)]
 
-    # Pattern for exact match: package_name-<version>-<release>.src.rpm
     pattern = re.compile(
         rf"^{re.escape(package_name)}-[0-9][0-9a-zA-Z._%+-]+-[0-9a-zA-Z._%+-]+\.src\.rpm$"
     )
-    matching_files = [link["href"] for link in links if pattern.match(link["href"])]
-
+    matching_files = sorted([f for f in links if pattern.match(f)])
     if not matching_files:
         return None, None
-
-    matching_files.sort()  # Sort to get the highest version last
-    latest_file = matching_files[-1]
-    src_rpm_url = repo_url + latest_file
-    return src_rpm_url, latest_file
+    return repo_url + matching_files[-1], matching_files[-1]
 
 
-def download_src_rpm(src_rpm_url, src_rpm_filename):
-    """
-    Downloads the src.rpm file from the remote repository to a temporary location.
-
-    Args:
-        src_rpm_url (str): The full URL to the src.rpm file.
-        src_rpm_filename (str): The name of the src.rpm file.
-
-    Returns:
-        str: The local path to the downloaded file.
-
-    Raises:
-        ValueError: If the download fails.
-    """
+def download_src_rpm(src_rpm_url: str, src_rpm_filename: str) -> str:
+    """Download src.rpm to temp location, return local path."""
     temp_dir = tempfile.mkdtemp()
     local_path = os.path.join(temp_dir, src_rpm_filename)
     try:
@@ -155,153 +82,133 @@ def download_src_rpm(src_rpm_url, src_rpm_filename):
                     if chunk:
                         f.write(chunk)
         return local_path
-    except requests.RequestException as e:
+    except (requests.RequestException, IOError) as e:
         raise ValueError(f"Failed to download {src_rpm_url}: {e}")
-    except IOError as e:
-        raise ValueError(f"Failed to write downloaded file {local_path}: {e}")
 
 
-@click.command("rebuild")
-@click.option(
-    "--sandbox",
-    "-s",
-    help="Sandbox name (e.g., Sisyphus-x86_64). Defaults to <branch>-<arch> from config.",
+app = typer.Typer(
+    name="rebuild",
+    help="Rebuild a package in the specified sandbox by fetching its src.rpm from a repository.",
 )
-@click.option(
-    "--no-check",
-    is_flag=True,
-    help="Do not run package tests (rpmbuild --without=check).",
-)
-@click.option(
-    "--rpmbuild-extra",
-    default="",
-    help="Extra flags to pass to rpmbuild (via --rpmbuild-args).",
-)
-@click.argument("package_name")
-@click.help_option("--help", "-h")
-def rebuild_cmd(sandbox, no_check, rpmbuild_extra, package_name):
-    """
-    Rebuild a package in the specified sandbox by providing an exact package name.
-    Fetches the corresponding src.rpm from the repository specified by the mirror,
-    which can be local (file:/mnt/repo) or remote (http://ftp.altlinux.org/...).
 
-    Args:
-        sandbox (str): Optional sandbox name; defaults to branch-arch if not provided.
-        no_check (bool): If set, skips package tests during build.
-        rpmbuild_extra (str): Extra flags to pass to rpmbuild.
-        package_name (str): Exact name of the package to rebuild (e.g., 'python3-module-hypothesis').
-    """
-    # Load the global configuration
+
+@app.command()
+def rebuild_cmd(
+    package_name: str = typer.Argument(
+        ...,
+        help="Exact package name to rebuild (e.g., python3-module-hypothesis).",
+    ),
+    sandbox: str = typer.Option(
+        None,
+        "--sandbox",
+        "-s",
+        help="Sandbox name (e.g., Sisyphus-x86_64). Defaults to <branch>-<arch> from config.",
+    ),
+    no_check: bool = typer.Option(
+        False,
+        "--no-check",
+        help="Do not run package tests (rpmbuild --without=check).",
+    ),
+    rpmbuild_extra: str = typer.Option(
+        "",
+        "--rpmbuild-extra",
+        help="Extra flags to pass to rpmbuild (via --rpmbuild-args).",
+    ),
+):
+    """Rebuild a package by fetching its corresponding src.rpm and building it in sandbox."""
+    # Load config
     try:
         config = load_config()
     except Exception as e:
-        click.echo(colorize(f"Failed to load configuration: {e}", color="red"))
-        return
+        typer.echo(colorize(f"Failed to load configuration: {e}", color="red"))
+        raise typer.Exit(code=1)
 
-    # Determine the sandbox name, defaulting to <branch>-<arch> if not specified
     sandbox_name = (
         sandbox or f"{config.get('branch', 'Sisyphus')}-{config.get('arch', 'x86_64')}"
     )
-
-    # Get sandbox-specific configuration
     try:
         sandbox_config = get_sandbox_config(sandbox_name, config)
     except Exception as e:
-        click.echo(
+        typer.echo(
             colorize(
                 f"Failed to get sandbox configuration for {sandbox_name}: {e}",
                 color="red",
             )
         )
-        return
+        raise typer.Exit(code=1)
 
-    # Initialize the logger for the sandbox
+    # Logging
     try:
         init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
     except Exception as e:
-        click.echo(colorize(f"Failed to initialize logger: {e}", color="red"))
-        return
+        typer.echo(colorize(f"Failed to initialize logger: {e}", color="red"))
+        raise typer.Exit(code=1)
 
-    # Create Environment object and verify sandbox existence
     env = Environment(sandbox_name, sandbox_config)
     if not env.exists():
-        click.echo(
+        typer.echo(
             colorize(
                 f"Sandbox {sandbox_name} does not exist. Please initialize it first.",
                 color="red",
             )
         )
-        return
+        raise typer.Exit(code=1)
 
-    # Extract mirror and branch from sandbox configuration
-    mirror = sandbox_config.get("mirror")
-    branch = sandbox_config.get("branch")
+    mirror, branch = sandbox_config.get("mirror"), sandbox_config.get("branch")
     if not mirror or not branch:
-        click.echo(
+        typer.echo(
             colorize("Mirror or branch not specified in configuration.", color="red")
         )
-        return
+        raise typer.Exit(code=1)
 
-    # Variable to track temporary file for cleanup
-    temp_file = None
-    src_rpm_path = None
-
+    temp_file, src_rpm_path = None, None
     try:
         if mirror.startswith("file:"):
-            # Handle local mirror
             repo_dir = get_local_repo_dir(mirror, branch)
             src_rpm_path = find_src_rpm_local(repo_dir, package_name)
             if src_rpm_path is None:
-                click.echo(
+                typer.echo(
                     colorize(
                         f"No matching src.rpm found for {package_name} in {repo_dir}",
                         color="red",
                     )
                 )
-                return
+                raise typer.Exit(code=1)
 
         elif mirror.startswith("http"):
-            # Handle remote mirror
             repo_url = get_remote_repo_url(mirror, branch)
             src_rpm_url, src_rpm_filename = find_src_rpm_remote(repo_url, package_name)
-            if src_rpm_url is None or src_rpm_filename is None:
-                click.echo(
+            if not src_rpm_url or not src_rpm_filename:
+                typer.echo(
                     colorize(
                         f"No matching src.rpm found for {package_name} at {repo_url}",
                         color="red",
                     )
                 )
-                return
+                raise typer.Exit(code=1)
             temp_file = download_src_rpm(src_rpm_url, src_rpm_filename)
             src_rpm_path = temp_file
-
         else:
-            click.echo(
-                colorize(
-                    f"Unsupported mirror type: {mirror}. Must be 'file:' or 'http'.",
-                    color="red",
-                )
-            )
-            return
+            typer.echo(colorize(f"Unsupported mirror type: {mirror}", color="red"))
+            raise typer.Exit(code=1)
 
-        # Get package metadata
+        # Metadata
         meta_name, version, release = get_spec_metadata(src_rpm_path, is_src_rpm=True)
         if not meta_name:
             meta_name = os.path.basename(src_rpm_path).replace(".src.rpm", "")
-            version = "unknown"
-            release = "unknown"
+            version, release = "unknown", "unknown"
 
         logger.info(
             f"Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}"
         )
-        click.echo(
+        typer.echo(
             colorize(
                 f"Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}",
                 bold=True,
             )
         )
 
-        # Set up build log directory and file
+        # Build log dir
         log_dir = os.path.join(
             sandbox_config["build_logs_dir"], sandbox_name, meta_name
         )
@@ -310,11 +217,8 @@ def rebuild_cmd(sandbox, no_check, rpmbuild_extra, package_name):
             build_number += 1
         build_log_dir = os.path.join(log_dir, f"build_{build_number}")
         os.makedirs(build_log_dir, exist_ok=True)
-        build_log = os.path.join(build_log_dir, "build.log")
 
-        # Initialize HasherAdapter for building
         hasher = HasherAdapter(base_dir=config.get("base_dir"))
-
         builder = BuildManager(env, hasher_adapter=hasher)
         builder.build(
             build_target=src_rpm_path,
@@ -327,31 +231,29 @@ def rebuild_cmd(sandbox, no_check, rpmbuild_extra, package_name):
             rpmbuild_extra=rpmbuild_extra,
             command="rebuild",
         )
-        click.echo(
+
+        typer.echo(
             colorize(
                 f"Successfully rebuilt {meta_name} (Version: {version}, Release: {release}) (sandbox: {sandbox_name}).",
                 color="green",
             )
         )
 
-    except ValueError as e:
-        click.echo(colorize(str(e), color="red"))
     except Exception as e:
-        click.echo(
-            colorize(
-                f"Failed to rebuild {meta_name if meta_name else package_name} (sandbox: {sandbox_name}).",
-                color="red",
-            )
-        )
+        typer.echo(colorize(f"Failed to rebuild {package_name}: {e}", color="red"))
+        raise typer.Exit(code=1)
     finally:
-        # Clean up temporary file if it was created
         if temp_file and os.path.exists(temp_file):
             try:
                 os.remove(temp_file)
             except OSError as e:
-                click.echo(
+                typer.echo(
                     colorize(
                         f"Warning: Failed to remove temporary file {temp_file}: {e}",
                         color="yellow",
                     )
                 )
+
+
+if __name__ == "__main__":
+    app()

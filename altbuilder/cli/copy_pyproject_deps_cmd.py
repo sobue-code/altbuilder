@@ -1,19 +1,23 @@
 import os
 import subprocess
-
-import click
+import typer
 
 from ..config import get_sandbox_config, load_config
 from ..core.environment import Environment
 from ..utils import colorize, init_logger, logger
 
+app = typer.Typer(name="copy-pyproject-deps", help="Copy pyproject_deps.json from sandbox to .gear/ directory.")
 
-@click.command("copy-pyproject-deps")
-@click.option(
-    "--sandbox", "-s", help="Sandbox name. Defaults to <branch>-<arch> from config."
-)
-@click.help_option("--help", "-h")
-def copy_pyproject_deps(sandbox):
+
+@app.command()
+def copy_pyproject_deps(
+    sandbox: str = typer.Option(
+        None,
+        "--sandbox",
+        "-s",
+        help="Sandbox name. Defaults to <branch>-<arch> from config.",
+    )
+):
     """Copy pyproject_deps.json from sandbox to .gear/ directory."""
     config = load_config()
     sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
@@ -76,11 +80,15 @@ def copy_pyproject_deps(sandbox):
                 """
             )
 
-        click.echo(colorize(f"pyproject_deps.json copied to .gear/", color="green"))
+        typer.echo(colorize(f"pyproject_deps.json copied to .gear/", color="green"))
         logger.info(f"pyproject_deps.json copied to .gear/ in sandbox {sandbox_name}")
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to copy or commit pyproject_deps.json: {e}")
-        click.echo(
+        typer.echo(
             colorize(f"Failed to copy or commit pyproject_deps.json: {e}", color="red")
         )
-        raise
+        raise typer.Exit(code=1)
+
+
+if __name__ == "__main__":
+    app()

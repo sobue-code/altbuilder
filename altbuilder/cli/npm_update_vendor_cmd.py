@@ -1,24 +1,38 @@
 import os
 import subprocess
 
-import click
+import typer
 
 from ..config import get_sandbox_config, load_config
 from ..core.environment import Environment
 from ..utils import colorize, init_logger, logger
 from ..utils.metrics import Metrics
 
+app = typer.Typer(
+    name="npm-update-vendor",
+    help="Update NPM vendor dependencies, optionally using a specific tag.",
+)
 
-@click.command("npm-update-vendor")
-@click.option(
-    "--sandbox", "-s", help="Sandbox name. Defaults to <branch>-<arch> from config."
-)
-@click.option(
-    "--reinit", "-r", is_flag=True, help="Reinitialize sandbox if it already exists."
-)
-@click.argument("tag", required=False, default="")
-@click.help_option("--help", "-h")
-def npm_update_vendor(sandbox, reinit, tag):
+
+@app.command()
+def npm_update_vendor(
+    sandbox: str = typer.Option(
+        None,
+        "--sandbox",
+        "-s",
+        help="Sandbox name. Defaults to <branch>-<arch> from config.",
+    ),
+    reinit: bool = typer.Option(
+        False,
+        "--reinit",
+        "-r",
+        help="Reinitialize sandbox if it already exists.",
+    ),
+    tag: str = typer.Argument(
+        "",
+        help="Optional tag to use during update.",
+    ),
+):
     """Update NPM vendor dependencies, optionally using a specific tag."""
     config = load_config()
     sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
@@ -75,9 +89,9 @@ def npm_update_vendor(sandbox, reinit, tag):
         git clone '{upstream_url}' package_nodejs;
         cd package_nodejs;
         {tag_cmd}
-        
+
         rm -rf node_modules;
-        
+
         # Install dependencies using appropriate npm command
         if [ -s package-lock.json ]; then
             npm ci || npm install;
@@ -90,7 +104,6 @@ def npm_update_vendor(sandbox, reinit, tag):
     with metrics.track_command(command=" ".join(cmd), sandbox_name=sandbox_name):
         subprocess.run(cmd, env=env_vars, check=True)
 
-    # Copy node_modules from sandbox to host using copy_from
     try:
         env.copy_from("/usr/src/package_nodejs/node_modules", "./node_modules")
         # Check if node_modules directory is already tracked in git
@@ -109,42 +122,60 @@ def npm_update_vendor(sandbox, reinit, tag):
         # Stage the node_modules directory
         subprocess.run(["git", "add", "node_modules"], check=True)
 
-        # Commit with appropriate message
-        commit_message = (
-            "Update NPM dependencies"
-            if node_modules_tracked
-            else "Vendoring NPM dependencies"
+        # Проверяем, есть ли изменения
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            capture_output=True,
         )
-        subprocess.run(["git", "commit", "-m", commit_message], check=True)
 
-        click.echo(
-            colorize(
-                f"""NPM vendor dependencies updated and committed successfully.
-                    Don't forget to add the following line to your .gear/rules:
-
-                    tar: node_modules name=node_modules
-
-                    And this to your .spec:
-
-                    SourceX: node_modules.tar
-
-                    %setup -a X
-                """,
-                color="green",
+        if diff_result.returncode == 0:
+            typer.echo(
+                colorize(
+                    "NPM vendor dependencies are already up to date. Nothing to commit.",
+                    color="yellow",
+                )
             )
-        )
-        logger.info(
-            f"NPM vendor dependencies updated and committed in sandbox {sandbox_name}"
-        )
+            logger.info("NPM vendor dependencies up to date, no commit created.")
+        else:
+            commit_message = (
+                "Update NPM dependencies"
+                if node_modules_tracked
+                else "Vendoring NPM dependencies"
+            )
+            subprocess.run(["git", "commit", "-m", commit_message], check=True)
+
+            typer.echo(
+                colorize(
+                    f"""NPM vendor dependencies updated and committed successfully.
+Don't forget to add the following line to your .gear/rules:
+
+tar: node_modules name=node_modules
+
+And this to your .spec:
+
+SourceX: node_modules.tar
+
+%setup -a X
+""",
+                    color="green",
+                )
+            )
+            logger.info(
+                f"NPM vendor dependencies updated and committed in sandbox {sandbox_name}"
+            )
     except EnvironmentError as e:
         logger.error(f"Failed to update NPM vendor dependencies: {e}")
-        click.echo(
+        typer.echo(
             colorize(f"Failed to update NPM vendor dependencies: {e}", color="red")
         )
-        raise
+        raise typer.Exit(code=1)
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to commit NPM vendor dependencies: {e}")
-        click.echo(
+        typer.echo(
             colorize(f"Failed to commit NPM vendor dependencies: {e}", color="red")
         )
-        raise
+        raise typer.Exit(code=1)
+
+
+if __name__ == "__main__":
+    app()

@@ -1,17 +1,24 @@
-import click
-import os
-import json
-import shutil
-from datetime import datetime
-from typing import List, Dict, Any
-from collections import defaultdict
-from rich.console import Console
-from rich.tree import Tree
-from rich.text import Text
-from rich.panel import Panel
 import difflib
+import json
+import os
+import shutil
+from collections import defaultdict
+from datetime import datetime
+from typing import Any, Dict, List
+
+import typer
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich.tree import Tree
+
 from ..config import load_config
-from ..utils import init_logger, colorize, open_with_file_manager, logger
+from ..utils import colorize, init_logger, logger, open_with_file_manager
+
+app = typer.Typer(
+    name="logs",
+    help="Display or manage build logs for sandboxes and packages.",
+)
 
 
 def collect_build_logs(
@@ -212,10 +219,14 @@ def display_spec_diff(build1, build2):
     spec2_path = get_spec_path(build2["log_path"], build2["package"])
 
     if not spec1_path:
-        click.echo(colorize(f"No spec file found for build {build1['build_dir']}", color="red"))
+        typer.echo(
+            colorize(f"No spec file found for build {build1['build_dir']}", color="red")
+        )
         return
     if not spec2_path:
-        click.echo(colorize(f"No spec file found for build {build2['build_dir']}", color="red"))
+        typer.echo(
+            colorize(f"No spec file found for build {build2['build_dir']}", color="red")
+        )
         return
 
     with open(spec1_path, "r") as f1, open(spec2_path, "r") as f2:
@@ -230,17 +241,17 @@ def display_spec_diff(build1, build2):
     )
 
     for line in diff:
-        line = line.rstrip('\n')
-        if line.startswith('---') or line.startswith('+++'):
-            click.echo(colorize(line, color="yellow"))
-        elif line.startswith('@@'):
-            click.echo(colorize(line, color="cyan"))
-        elif line.startswith('-'):
-            click.echo(colorize(line, color="red"))
-        elif line.startswith('+'):
-            click.echo(colorize(line, color="green"))
+        line = line.rstrip("\n")
+        if line.startswith("---") or line.startswith("+++"):
+            typer.echo(colorize(line, color="yellow"))
+        elif line.startswith("@@"):
+            typer.echo(colorize(line, color="cyan"))
+        elif line.startswith("-"):
+            typer.echo(colorize(line, color="red"))
+        elif line.startswith("+"):
+            typer.echo(colorize(line, color="green"))
         else:
-            click.echo(line)
+            typer.echo(line)
 
 
 def get_build_by_id(builds, id_str):
@@ -255,60 +266,66 @@ def get_build_by_id(builds, id_str):
         if 1 <= idx <= len(builds):
             return builds[idx - 1]
         else:
-            click.echo(colorize(f"Index {idx} out of range (1-{len(builds)}).", color="red"))
+            typer.echo(
+                colorize(f"Index {idx} out of range (1-{len(builds)}).", color="red")
+            )
             return None
     except ValueError:
         # Assume directory name
         for build in builds:
             if build["build_dir"] == id_str:
                 return build
-        click.echo(colorize(f"Build directory '{id_str}' not found.", color="red"))
+        typer.echo(colorize(f"Build directory '{id_str}' not found.", color="red"))
         return None
 
 
-@click.command("logs")
-@click.option("--sandbox", "-s", help="Filter logs by sandbox name.")
-@click.option("--package", "-p", help="Filter logs by package name.")
-@click.option(
-    "--json-output",
-    "-j",
-    is_flag=True,
-    help="Output logs in JSON format instead of tree.",
-)
-@click.option("--limit", type=int, help="Limit number of builds.")
-@click.option("-f", is_flag=True, help="Open log directory in file manager.")
-@click.option(
-    "--file-manager",
-    default=None,
-    type=str,
-    help="Specify file manager (e.g., mc or ranger) to use with -f.",
-)
-@click.option(
-    "--clean",
-    is_flag=True,
-    help="Remove logs for the specified sandbox or all logs if no sandbox is specified.",
-)
-@click.option(
-    "--expand-history",
-    "-e",
-    is_flag=True,
-    help="Expand build history to show all attempts.",
-)
-@click.option(
-    "--diff-spec",
-    "-d",
-    is_flag=True,
-    help="Enable spec diff mode. Compares last two builds if no IDs provided, or the specified two builds (directories or indices). Requires --package.",
-)
-@click.argument('diff_ids', nargs=-1, required=False)
-@click.help_option("--help", "-h")
+@app.command()
 def logs_cmd(
-    sandbox, package, json_output, limit, f, file_manager, clean, expand_history, diff_spec, diff_ids
+    ctx: typer.Context,
+    sandbox: str = typer.Option(
+        None, "--sandbox", "-s", help="Filter logs by sandbox name."
+    ),
+    package: str = typer.Option(
+        None, "--package", "-p", help="Filter logs by package name."
+    ),
+    json_output: bool = typer.Option(
+        False, "--json-output", "-j", help="Output logs in JSON format instead of tree."
+    ),
+    limit: int = typer.Option(None, "--limit", help="Limit number of builds."),
+    f: bool = typer.Option(False, "-f", help="Open log directory in file manager."),
+    file_manager: str = typer.Option(
+        None,
+        "--file-manager",
+        help="Specify file manager (e.g., mc or ranger) to use with -f.",
+    ),
+    clean: bool = typer.Option(
+        False,
+        "--clean",
+        help="Remove logs for the specified sandbox or all logs if no sandbox is specified.",
+    ),
+    expand_history: bool = typer.Option(
+        False,
+        "--expand-history",
+        "-e",
+        help="Expand build history to show all attempts.",
+    ),
+    diff_spec: bool = typer.Option(
+        False,
+        "--diff-spec",
+        "-d",
+        help="Enable spec diff mode. Compares last two builds if no IDs provided, or the specified two builds (directories or indices). Requires --package.",
+    ),
+    diff_ids: List[str] = typer.Argument(
+        None, help="Build IDs or indices to compare for --diff-spec."
+    ),
 ):
     """Display or manage build logs for sandboxes and packages."""
     config = load_config()
     init_logger(config=config)
     console = Console()
+
+    # Use sandbox from context if not provided
+    sandbox = sandbox or ctx.obj.get("sandbox")
 
     # Determine the log directory
     log_dir = config["build_logs_dir"]
@@ -320,37 +337,37 @@ def logs_cmd(
     # Handle --clean option
     if clean:
         if not os.path.exists(log_dir):
-            click.echo(
+            typer.echo(
                 colorize(f"Log directory {log_dir} does not exist.", color="yellow")
             )
             logger.info(f"No logs found at {log_dir}")
             return
-        if click.confirm(
+        if typer.confirm(
             colorize(f"Are you sure you want to remove logs at {log_dir}?", color="red")
         ):
             try:
                 shutil.rmtree(log_dir, ignore_errors=True)
-                click.echo(
+                typer.echo(
                     colorize(f"Logs at {log_dir} removed successfully.", color="green")
                 )
                 logger.info(f"Removed logs at {log_dir}")
             except OSError as e:
-                click.echo(
+                typer.echo(
                     colorize(f"Error removing logs at {log_dir}: {e}", color="red")
                 )
                 logger.error(f"Failed to remove logs at {log_dir}: {e}")
-        return
+            return
 
     # Handle log viewing (default behavior)
     if not os.path.exists(log_dir):
-        click.echo(colorize(f"Log directory {log_dir} does not exist.", color="red"))
+        typer.echo(colorize(f"Log directory {log_dir} does not exist.", color="red"))
         logger.info(f"No logs found at {log_dir}")
         return
 
     # If -f is used, open the log directory with specified or default file manager
     if f:
         open_with_file_manager(log_dir, file_manager)
-        click.echo(
+        typer.echo(
             colorize(f"Opened log directory {log_dir} in file manager.", color="green")
         )
         logger.info(f"Opened log directory {log_dir} in file manager")
@@ -359,7 +376,7 @@ def logs_cmd(
     # Collect and display build logs
     builds = collect_build_logs(config["build_logs_dir"], sandbox, package)
     if not builds:
-        click.echo(
+        typer.echo(
             colorize("No build logs found matching the criteria.", color="yellow")
         )
         logger.info("No build logs found.")
@@ -367,13 +384,25 @@ def logs_cmd(
 
     if diff_spec:
         if not package:
-            click.echo(colorize("Error: --diff-spec requires --package to be specified.", color="red"))
+            typer.echo(
+                colorize(
+                    "Error: --diff-spec requires --package to be specified.",
+                    color="red",
+                )
+            )
             return
 
-        if len(diff_ids) == 0:
+        # Check if diff_ids is provided and handle default case
+        if diff_ids is None or len(diff_ids) == 0:
             # Default: compare last two builds
             if len(builds) < 2:
-                click.echo(colorize("Error: Need at least two builds to compare.", color="red"))
+                typer.echo(
+                    colorize(
+                        "Error: At least two builds are required to compare spec files.",
+                        color="red",
+                    )
+                )
+                logger.info("Insufficient builds for spec diff.")
                 return
             build1 = builds[1]  # Older (second latest)
             build2 = builds[0]  # Newer (latest)
@@ -384,20 +413,35 @@ def logs_cmd(
             if not build1 or not build2:
                 return
         else:
-            click.echo(colorize("Error: --diff-spec with IDs expects exactly two arguments.", color="red"))
+            typer.echo(
+                colorize(
+                    "Error: --diff-spec with IDs expects exactly two arguments.",
+                    color="red",
+                )
+            )
             return
 
-        click.echo(colorize(f"Comparing spec files (older to newer): {build1['build_dir']} to {build2['build_dir']}", bold=True, color="cyan"))
+        typer.echo(
+            colorize(
+                f"Comparing spec files (older to newer): {build1['build_dir']} to {build2['build_dir']}",
+                bold=True,
+                color="cyan",
+            )
+        )
         display_spec_diff(build1, build2)
         return
 
     if json_output:
         if limit:
             limited_builds = builds[:limit]
-            click.echo(json.dumps(limited_builds, indent=2, ensure_ascii=False))
+            typer.echo(json.dumps(limited_builds, indent=2, ensure_ascii=False))
         else:
-            click.echo(json.dumps(builds, indent=2, ensure_ascii=False))
+            typer.echo(json.dumps(builds, indent=2, ensure_ascii=False))
     else:
         if limit:
             builds = builds[:limit]
         format_build_logs(builds, expand_history)
+
+
+if __name__ == "__main__":
+    app()

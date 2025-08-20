@@ -1,24 +1,38 @@
 import os
 import subprocess
 
-import click
+import typer
 
 from ..config import get_sandbox_config, load_config
 from ..core.environment import Environment
 from ..utils import colorize, init_logger, logger
 from ..utils.metrics import Metrics
 
+app = typer.Typer(
+    name="go-update-vendor",
+    help="Update Go vendor dependencies, optionally using a specific tag.",
+)
 
-@click.command("go-update-vendor")
-@click.option(
-    "--sandbox", "-s", help="Sandbox name. Defaults to <branch>-<arch> from config."
-)
-@click.option(
-    "--reinit", "-r", is_flag=True, help="Reinitialize sandbox if it already exists."
-)
-@click.argument("tag", required=False, default="")
-@click.help_option("--help", "-h")
-def go_update_vendor(sandbox, reinit, tag):
+
+@app.command()
+def go_update_vendor(
+    sandbox: str = typer.Option(
+        None,
+        "--sandbox",
+        "-s",
+        help="Sandbox name. Defaults to <branch>-<arch> from config.",
+    ),
+    reinit: bool = typer.Option(
+        False,
+        "--reinit",
+        "-r",
+        help="Reinitialize sandbox if it already exists.",
+    ),
+    tag: str = typer.Argument(
+        "",
+        help="Optional tag to use during update.",
+    ),
+):
     """Update Go vendor dependencies, optionally using a specific tag."""
     config = load_config()
     sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
@@ -83,6 +97,7 @@ def go_update_vendor(sandbox, reinit, tag):
         go mod vendor;
         """,
     ]
+
     metrics = Metrics(base_dir=config["base_dir"])
     with metrics.track_command(command=" ".join(cmd), sandbox_name=sandbox_name):
         subprocess.run(cmd, env=env_vars, check=True)
@@ -105,40 +120,62 @@ def go_update_vendor(sandbox, reinit, tag):
         # Stage the vendor directory
         subprocess.run(["git", "add", "vendor"], check=True)
 
-        # Commit with appropriate message
-        commit_message = (
-            "Update Go dependencies" if vendor_tracked else "Vendoring Go dependencies"
+        # Проверяем, есть ли изменения в индексе
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            capture_output=True,
         )
-        subprocess.run(["git", "commit", "-m", commit_message], check=True)
 
-        click.echo(
-            colorize(
-                f"""Go vendor dependencies updated and committed successfully.
-                    Don't forget to add the following line to your .gear/rules:
-                    
-                    tar: vendor name=vendor
-                    
-                    And this to your .spec:
-                    
-                    SourceX: vendor.tar
-
-                    %setup -a X
-                """,
-                color="green",
+        if diff_result.returncode == 0:
+            # Изменений нет → ничего не коммитим
+            typer.echo(
+                colorize(
+                    "Go vendor dependencies are already up to date. Nothing to commit.",
+                    color="yellow",
+                )
             )
-        )
-        logger.info(
-            f"Go vendor dependencies updated and committed in sandbox {sandbox_name}"
-        )
+            logger.info("Vendor dependencies up to date, no commit created.")
+        else:
+            # Есть изменения → коммитим
+            commit_message = (
+                "Update Go dependencies"
+                if vendor_tracked
+                else "Vendoring Go dependencies"
+            )
+            subprocess.run(["git", "commit", "-m", commit_message], check=True)
+
+            typer.echo(
+                colorize(
+                    f"""Go vendor dependencies updated and committed successfully.
+Don't forget to add the following line to your .gear/rules:
+
+tar: vendor name=vendor
+
+And this to your .spec:
+
+SourceX: vendor.tar
+
+%setup -a X
+""",
+                    color="green",
+                )
+            )
+            logger.info(
+                f"Go vendor dependencies updated and committed in sandbox {sandbox_name}"
+            )
     except EnvironmentError as e:
         logger.error(f"Failed to update Go vendor dependencies: {e}")
-        click.echo(
+        typer.echo(
             colorize(f"Failed to update Go vendor dependencies: {e}", color="red")
         )
-        raise
+        raise typer.Exit(code=1)
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to commit Go vendor dependencies: {e}")
-        click.echo(
+        typer.echo(
             colorize(f"Failed to commit Go vendor dependencies: {e}", color="red")
         )
-        raise
+        raise typer.Exit(code=1)
+
+
+if __name__ == "__main__":
+    app()

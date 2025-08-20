@@ -1,64 +1,74 @@
-import click
 import json
 import os
 import signal
+
+import typer
+
 from ..config import load_config
-from ..utils.metrics import Metrics
 from ..utils.logger import logger
+from ..utils.metrics import Metrics
 
-
-@click.command("stop")
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Forcefully stop the task without confirmation.",
+app = typer.Typer(
+    name="stop",
+    help="Stop the currently running task.",
 )
-@click.help_option("--help", "-h")
-def stop_cmd(force):
+
+
+@app.command(name="stop")
+def stop_cmd(
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Forcefully stop the task without confirmation."
+    ),
+):
     """Stop the current running task."""
     config = load_config()
-
-    # Initialize Metrics with base directory
     metrics = Metrics(base_dir=config["base_dir"])
     task = metrics.get_current_task()
 
     if not task:
         logger.info("No tasks are currently running.")
-        click.echo("No tasks are currently running.")
-        return
+        typer.echo("No tasks are currently running.")
+        raise typer.Exit()
 
-    # Display task information
+    # Show task details
     logger.info("Current task details:")
-    click.echo(json.dumps(task, indent=2, ensure_ascii=False))
+    typer.echo(json.dumps(task, indent=2, ensure_ascii=False))
 
-    # Ask for confirmation unless --force is specified
+    # Ask for confirmation if not forced
     if not force:
-        click.echo(
+        typer.echo(
             f"\nYou are about to stop the task (PID: {task['pid']}, Command: {task['command']})."
         )
-        confirm = click.confirm("Do you want to proceed?", default=False)
+        confirm = typer.confirm("Do you want to proceed?", default=False)
         if not confirm:
             logger.info("Task termination cancelled.")
-            click.echo("Task termination cancelled.")
-            return
+            typer.echo("Task termination cancelled.")
+            raise typer.Exit()
 
-    # Handle task termination
     pid = task["pid"]
+    temp_json_path = os.path.join(config["base_dir"], "current_task.json")
+
     try:
-        os.kill(pid, signal.SIGTERM)  # Send SIGTERM for graceful termination
+        os.kill(pid, signal.SIGTERM)
         logger.info(f"Sent termination signal to task (PID: {pid})")
-        click.echo(f"Task (PID: {pid}) terminated.")
-        # Remove the task file to allow new tasks
-        temp_json_path = os.path.join(config["base_dir"], "current_task.json")
+        typer.echo(f"Task (PID: {pid}) terminated.")
+
+        # Clean up task state file
         if os.path.exists(temp_json_path):
             os.remove(temp_json_path)
+
     except ProcessLookupError:
-        logger.warning(f"Process with PID {pid} does not exist")
-        click.echo(f"Process with PID {pid} does not exist.")
+        logger.warning(f"Process with PID {pid} does not exist.")
+        typer.echo(f"Process with PID {pid} does not exist.")
+
         # Remove stale task file
-        temp_json_path = os.path.join(config["base_dir"], "current_task.json")
         if os.path.exists(temp_json_path):
             os.remove(temp_json_path)
+
     except OSError as e:
         logger.error(f"Failed to terminate process with PID {pid}: {e}")
-        raise click.Abort()
+        raise typer.Abort()
+
+
+if __name__ == "__main__":
+    app()

@@ -14,7 +14,8 @@ dependencies = [
     "tomli-w (>=1.2.0,<2.0.0)",
     "colorama (>=0.4.6,<0.5.0)",
     "rich (>=14.0.0,<15.0.0)",
-    "psutil (>=7.0.0,<8.0.0)"
+    "psutil (>=7.0.0,<8.0.0)",
+    "typer (>=0.16.1,<0.17.0)"
 ]
 
 [build-system]
@@ -22,4 +23,4 @@ requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-altbuilder = "altbuilder.cli:cli"
+altbuilder = "altbuilder.cli:app"

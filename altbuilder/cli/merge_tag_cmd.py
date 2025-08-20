@@ -1,7 +1,14 @@
-import sys
 import subprocess
-import click
+from typing import List, Optional
+
+import typer
+
 from ..utils import colorize
+
+app = typer.Typer(
+    name="merge-tag",
+    help="Merge a given tag into current branch with automatic conflict resolution favoring the tag.",
+)
 
 
 def path_exists_in_revision(revision: str, path: str) -> bool:
@@ -18,7 +25,7 @@ def path_exists_in_revision(revision: str, path: str) -> bool:
     return bool(files)
 
 
-def is_excluded_path(path: str, excluded_paths: list[str]) -> bool:
+def is_excluded_path(path: str, excluded_paths: List[str]) -> bool:
     """
     Returns True if the given path should be excluded (exact file match or inside excluded directory).
     """
@@ -31,17 +38,19 @@ def is_excluded_path(path: str, excluded_paths: list[str]) -> bool:
     return False
 
 
-@click.command("merge-tag")
-@click.argument("tag", required=True)
-@click.option(
-    "--exclude",
-    "-e",
-    multiple=True,
-    help="File or directory path to exclude from merge (can be used multiple times). "
-         "Always excludes '.gear' directory by default.",
-)
-@click.help_option("--help", "-h")
-def merge_tag_cmd(tag, exclude):
+@app.command()
+def merge_tag(
+    tag: str = typer.Argument(..., help="Tag to merge into current branch."),
+    exclude: Optional[List[str]] = typer.Option(
+        None,
+        "--exclude",
+        "-e",
+        help=(
+            "File or directory path to exclude from merge (can be used multiple times). "
+            "Always excludes '.gear' directory by default."
+        ),
+    ),
+):
     """
     Merge given TAG into current branch, automatically resolving conflicts
     in favor of the tag, except for excluded files/directories ('.gear' is always excluded).
@@ -51,20 +60,23 @@ def merge_tag_cmd(tag, exclude):
     """
     # Always exclude .gear (even if not explicitly specified)
     excluded_paths = [".gear"]
-    for d in exclude:
-        if d not in excluded_paths:
-            excluded_paths.append(d)
+    if exclude:
+        for d in exclude:
+            if d not in excluded_paths:
+                excluded_paths.append(d)
 
     # Ensure working directory is clean (no unstaged or staged changes)
     try:
         subprocess.run(["git", "diff", "--quiet"], check=True)
         subprocess.run(["git", "diff", "--cached", "--quiet"], check=True)
     except subprocess.CalledProcessError:
-        click.echo(colorize(
-            "Error: Working directory is not clean. Please commit or stash changes first.",
-            color="red"
-        ))
-        sys.exit(1)
+        typer.echo(
+            colorize(
+                "Error: Working directory is not clean. Please commit or stash changes first.",
+                color="red",
+            )
+        )
+        raise typer.Exit(code=1)
 
     # Start merge with no commit and no fast-forward
     try:
@@ -86,10 +98,11 @@ def merge_tag_cmd(tag, exclude):
     # Resolve conflicts by taking "theirs" version from the tag, excluding excluded paths
     try:
         result = subprocess.run(
-            ["git", "ls-files", "-u"],
-            capture_output=True, text=True, check=True
+            ["git", "ls-files", "-u"], capture_output=True, text=True, check=True
         )
-        unmerged_files = sorted(set(line.split()[-1] for line in result.stdout.splitlines()))
+        unmerged_files = sorted(
+            set(line.split()[-1] for line in result.stdout.splitlines())
+        )
     except Exception:
         unmerged_files = []
 
@@ -102,7 +115,8 @@ def merge_tag_cmd(tag, exclude):
                 ["git", "cat-file", "-e", f"{tag}:{file}"],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-            ) == 0
+            )
+            == 0
         )
         if exists_in_tag:
             subprocess.run(["git", "checkout", "--theirs", file], check=True)
@@ -130,12 +144,14 @@ def merge_tag_cmd(tag, exclude):
         text=True,
     ).stdout
     if still_unmerged.strip():
-        click.echo(colorize(
-            "Error: Some conflicts could not be resolved automatically. Resolve manually.",
-            color="red"
-        ))
+        typer.echo(
+            colorize(
+                "Error: Some conflicts could not be resolved automatically. Resolve manually.",
+                color="red",
+            )
+        )
         subprocess.run(["git", "merge", "--abort"])
-        sys.exit(1)
+        raise typer.Exit(code=1)
 
     # Overwrite working tree completely from the tag (except excluded paths)
     subprocess.run(["git", "checkout", tag, "--", "."], check=True)
@@ -144,10 +160,6 @@ def merge_tag_cmd(tag, exclude):
     for path in excluded_paths:
         if path_exists_in_revision("HEAD@{1}", path):
             subprocess.run(["git", "checkout", "HEAD@{1}", "--", path], check=True)
-        else:
-            # Optionally, warn user about missing excluded path in HEAD@{1}
-            # click.echo(colorize(f"Warning: excluded path '{path}' does not exist in HEAD@{{1}}. Skipping restore.", color="yellow"))
-            pass
 
     # Add everything, just in case
     subprocess.run(["git", "add", "."], check=True)
@@ -155,11 +167,10 @@ def merge_tag_cmd(tag, exclude):
     # Finalize the merge, disable editor prompt
     exit_code = subprocess.call(["sh", "-c", "EDITOR=true git merge --continue"])
     if exit_code != 0:
-        click.echo(colorize(
-            "Error: Merge continue failed. Check 'git status'.",
-            color="red"
-        ))
-        sys.exit(1)
+        typer.echo(
+            colorize("Error: Merge continue failed. Check 'git status'.", color="red")
+        )
+        raise typer.Exit(code=1)
 
     # Verify if differences outside excluded paths exist
     diff_cmd = ["git", "diff", tag, "--"]
@@ -174,13 +185,20 @@ def merge_tag_cmd(tag, exclude):
     ).stdout
 
     if diff_output.strip():
-        click.echo(colorize(
-            "Warning: Diff is not empty! There are unexpected differences outside excluded paths:",
-            color="yellow"
-        ))
-        click.echo(diff_output)
+        typer.echo(
+            colorize(
+                "Warning: Diff is not empty! There are unexpected differences outside excluded paths:",
+                color="yellow",
+            )
+        )
+        typer.echo(diff_output)
     else:
-        click.echo(colorize(
-            "Success: No differences outside excluded directories.",
-            color="green"
-        ))
+        typer.echo(
+            colorize(
+                "Success: No differences outside excluded directories.", color="green"
+            )
+        )
+
+
+if __name__ == "__main__":
+    app()

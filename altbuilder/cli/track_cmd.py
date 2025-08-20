@@ -1,22 +1,26 @@
-import click
 import json
 import time
+
+import typer
 from rich.console import Console
 from rich.live import Live
 from rich.text import Text
+
 from ..config import load_config
-from ..utils.metrics import Metrics
 from ..utils.logger import logger
+from ..utils.metrics import Metrics
+
+app = typer.Typer(name="track", help="Display information about the current task.")
 
 
-@click.command("track")
-@click.option(
-    "--watch",
-    is_flag=True,
-    help="Continuously monitor the current task, updating every second.",
-)
-@click.help_option("--help", "-h")
-def track_cmd(watch):
+@app.command()
+def track_cmd(
+    watch: bool = typer.Option(
+        False,
+        "--watch",
+        help="Continuously monitor the current task, updating every second.",
+    ),
+):
     """Display information about the current task."""
     config = load_config()
     console = Console()
@@ -29,11 +33,11 @@ def track_cmd(watch):
         task = metrics.get_current_task()
         if not task:
             logger.info("No tasks are currently running.")
-            click.echo("No tasks are currently running.")
+            typer.echo("No tasks are currently running.")
             return
 
         logger.info("Current task details:")
-        click.echo(json.dumps(task, indent=2, ensure_ascii=False))
+        typer.echo(json.dumps(task, indent=2, ensure_ascii=False))
         return
 
     # Watch mode: continuously monitor task with smooth updates
@@ -44,9 +48,15 @@ def track_cmd(watch):
                 if not task:
                     text = Text("No tasks are currently running.", style="bold red")
                 else:
-                    text = Text(json.dumps(task, indent=2, ensure_ascii=False), style="white")
+                    text = Text(
+                        json.dumps(task, indent=2, ensure_ascii=False), style="white"
+                    )
                 live.update(text)
                 time.sleep(1)
     except KeyboardInterrupt:
         logger.info("Stopped monitoring tasks.")
         console.print("\nStopped monitoring tasks.")
+
+
+if __name__ == "__main__":
+    app()

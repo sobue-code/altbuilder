@@ -1,11 +1,18 @@
-import os
 import getpass
+import os
 import subprocess
-import click
+
 import tomli_w
-from ..config import load_config, USER_CONFIG_DIR, USER_CONFIG_FILE
+import typer
+
+from ..config import USER_CONFIG_DIR, USER_CONFIG_FILE, load_config
 from ..exceptions import ConfigError
-from ..utils import logger, colorize
+from ..utils import colorize, logger
+
+app = typer.Typer(
+    name="config",
+    help="Display, edit, or initialize the altbuilder configuration.",
+)
 
 
 def display_config(config):
@@ -141,25 +148,26 @@ def ensure_config_file(force=False):
     return False
 
 
-@click.command("config")
-@click.option(
-    "--edit",
-    "-e",
-    is_flag=True,
-    help="Open the configuration file in the default editor (uses $EDITOR or nano).",
-)
-@click.option(
-    "--init",
-    is_flag=True,
-    help="Generate a new ~/.altbuilder/config.toml with user-specific defaults.",
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Force overwrite of existing config file when using --init.",
-)
-@click.help_option("--help", "-h")
-def config_cmd(edit, init, force):
+@app.command()
+def config_cmd(
+    ctx: typer.Context,
+    edit: bool = typer.Option(
+        False,
+        "--edit",
+        "-e",
+        help="Open the configuration file in the default editor (uses $EDITOR or nano).",
+    ),
+    init: bool = typer.Option(
+        False,
+        "--init",
+        help="Generate a new ~/.altbuilder/config.toml with user-specific defaults.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Force overwrite of existing config file when using --init.",
+    ),
+):
     """
     Display, edit, or initialize the altbuilder configuration.
 
@@ -170,18 +178,18 @@ def config_cmd(edit, init, force):
     # Handle --init
     if init:
         if USER_CONFIG_FILE.exists() and not force:
-            click.echo(
+            typer.echo(
                 colorize(
                     f"Config file already exists at {USER_CONFIG_FILE}. "
                     "Use --force to overwrite.",
                     color="yellow",
                 )
             )
-            raise click.Abort()
+            raise typer.Abort()
 
         initialized = ensure_config_file(force=force)
         if initialized:
-            click.echo(
+            typer.echo(
                 colorize(
                     f"Generated user-specific config at {USER_CONFIG_FILE}",
                     color="green",
@@ -193,15 +201,15 @@ def config_cmd(edit, init, force):
     try:
         config = load_config()
     except ConfigError as e:
-        click.echo(colorize(f"Error loading config: {e}", color="red"))
-        raise click.Abort()
+        typer.echo(colorize(f"Error loading config: {e}", color="red"))
+        raise typer.Abort()
 
     # Handle --edit
     if edit:
         # Ensure config file exists
         initialized = ensure_config_file()
         if initialized:
-            click.echo(
+            typer.echo(
                 colorize(
                     f"Created user-specific config at {USER_CONFIG_FILE}",
                     color="green",
@@ -212,7 +220,7 @@ def config_cmd(edit, init, force):
         editor = os.environ.get("EDITOR", "vim")
         try:
             subprocess.run([editor, str(USER_CONFIG_FILE)], check=True)
-            click.echo(
+            typer.echo(
                 colorize(
                     f"Opened {USER_CONFIG_FILE} in {editor}",
                     color="green",
@@ -220,21 +228,25 @@ def config_cmd(edit, init, force):
             )
             return
         except FileNotFoundError:
-            click.echo(
+            typer.echo(
                 colorize(
                     f"Editor '{editor}' not found. Please set $EDITOR or install {editor}.",
                     color="red",
                 )
             )
-            raise click.Abort()
+            raise typer.Abort()
         except subprocess.CalledProcessError as e:
-            click.echo(
+            typer.echo(
                 colorize(
                     f"Failed to open editor: {e}",
                     color="red",
                 )
             )
-            raise click.Abort()
+            raise typer.Abort()
 
     # Default action: Display configuration
-    click.echo(display_config(config))
+    typer.echo(display_config(config))
+
+
+if __name__ == "__main__":
+    app()

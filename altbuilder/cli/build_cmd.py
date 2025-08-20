@@ -1,50 +1,59 @@
 import os
-import click
-import subprocess
+
+import typer
+
 from ..config import load_config
 from ..core.build_manager import BuildManager
-from ..utils import init_logger, colorize, get_spec_metadata
+from ..utils import colorize, get_spec_metadata, init_logger
 from ..utils.setup_sandbox import setup_sandbox
 
+app = typer.Typer(
+    name="build",
+    help="Build a package in the specified sandbox.",
+)
 
-@click.command("build")
-@click.argument("build_target", required=False)
-@click.option(
-    "--arch",
-    "-a",
-    required=False,
-    help="Architecture (e.g., x86_64). Overrides config.",
-)
-@click.option(
-    "--branch",
-    "-b",
-    required=False,
-    help="Branch name (e.g., Sisyphus). Overrides config.",
-)
-@click.option("--task", "-t", type=int, help="Attach task repository by ID.")
-@click.option(
-    "--reinit", "-r", is_flag=True, help="Reinitialize the sandbox before building."
-)
-@click.option(
-    "--sandbox", "-s", help="Sandbox name. Defaults to <branch>-<arch> from config."
-)
-@click.option(
-    "--no-check",
-    is_flag=True,
-    help="Do not run package tests (rpmbuild --without=check).",
-)
-@click.option("--hsh-extra", default="", help="Extra flags to pass to hsh.")
-@click.option(
-    "--rpmbuild-extra",
-    default="",
-    help="Extra flags to pass to rpmbuild (via --rpmbuild-args).",
-)
-@click.help_option("--help", "-h")
+
+@app.command()
 def build_cmd(
-    build_target, arch, branch, task, reinit, sandbox, no_check, hsh_extra, rpmbuild_extra
+    ctx: typer.Context,
+    build_target: str = typer.Argument(
+        None, help="Source directory or src.rpm file to build."
+    ),
+    arch: str = typer.Option(
+        None, "--arch", "-a", help="Architecture (e.g., x86_64). Overrides config."
+    ),
+    branch: str = typer.Option(
+        None, "--branch", "-b", help="Branch name (e.g., Sisyphus). Overrides config."
+    ),
+    task: int = typer.Option(
+        None, "--task", "-t", help="Attach task repository by ID."
+    ),
+    reinit: bool = typer.Option(
+        False, "--reinit", "-r", help="Reinitialize the sandbox before building."
+    ),
+    sandbox: str = typer.Option(
+        None,
+        "--sandbox",
+        "-s",
+        help="Sandbox name. Defaults to <branch>-<arch> from config.",
+    ),
+    no_check: bool = typer.Option(
+        False, "--no-check", help="Do not run package tests (rpmbuild --without=check)."
+    ),
+    hsh_extra: str = typer.Option(
+        "", "--hsh-extra", help="Extra flags to pass to hsh."
+    ),
+    rpmbuild_extra: str = typer.Option(
+        "",
+        "--rpmbuild-extra",
+        help="Extra flags to pass to rpmbuild (via --rpmbuild-args).",
+    ),
 ):
     """Build a package in the specified sandbox. BUILD_TARGET can be a source directory or an src.rpm file."""
     config = load_config()
+
+    # Use sandbox from context if not provided
+    sandbox = sandbox or ctx.obj.get("sandbox")
 
     # Determine if build_target is an src.rpm file
     if (
@@ -73,7 +82,7 @@ def build_cmd(
         release = "unknown"
 
     # Log package metadata
-    click.echo(
+    typer.echo(
         colorize(
             f"Building {package_name} (Version: {version}, Release: {release}) in sandbox: {env.name}",
             bold=True,
@@ -104,5 +113,9 @@ def build_cmd(
         hsh_extra=hsh_extra,
         rpmbuild_extra=rpmbuild_extra,
     )
-    click.echo(colorize(f"Build completed in sandbox {env.name}.", color="green"))
-    click.echo(colorize(f"Build logs available at: {build_log_dir}", color="cyan"))
+    typer.echo(colorize(f"Build completed in sandbox {env.name}.", color="green"))
+    typer.echo(colorize(f"Build logs available at: {build_log_dir}", color="cyan"))
+
+
+if __name__ == "__main__":
+    app()

@@ -1,30 +1,50 @@
-import click
-from ..config import load_config, get_sandbox_config
+import typer
+
+from ..config import get_sandbox_config, load_config
 from ..core.environment import Environment
-from ..utils import init_logger, colorize
+from ..utils import colorize, init_logger
 
-
-@click.command("install")
-@click.option(
-    "--sandbox", "-s", help="Sandbox name. Defaults to <branch>-<arch> from config."
+app = typer.Typer(
+    name="install",
+    help="Install packages into specified sandbox.",
 )
-@click.argument("packages", nargs=-1)
-@click.help_option("--help", "-h")
-def install_cmd(sandbox, packages):
+
+
+@app.command()
+def install_cmd(
+    packages: list[str] = typer.Argument(
+        None,
+        help="Names of packages to install into the sandbox.",
+    ),
+    sandbox: str = typer.Option(
+        None,
+        "--sandbox",
+        "-s",
+        help="Sandbox name. Defaults to <branch>-<arch> from config.",
+    ),
+):
     """Install packages into specified sandbox."""
     config = load_config()
     sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
     sandbox_config = get_sandbox_config(sandbox_name, config)
+
+    # Initialize logger
     init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
+
+    # Setup environment
     env = Environment(sandbox_name, sandbox_config)
     if not env.exists():
-        click.echo(colorize(f"Sandbox {sandbox_name} does not exist.", color="red"))
-        return
+        typer.echo(colorize(f"Sandbox {sandbox_name} does not exist.", color="red"))
+        raise typer.Exit(code=1)
 
     if packages:
-        click.echo(
+        typer.echo(
             colorize(f"Installing packages in sandbox: {sandbox_name}", bold=True)
         )
         env.install(packages)
     else:
-        click.echo(colorize("No packages specified for installation.", color="yellow"))
+        typer.echo(colorize("No packages specified for installation.", color="yellow"))
+
+
+if __name__ == "__main__":
+    app()

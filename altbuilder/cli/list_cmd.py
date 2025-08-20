@@ -1,30 +1,45 @@
-import os
 import glob
-import click
+import os
+
+import typer
 from rich.console import Console
-from rich.tree import Tree
 from rich.panel import Panel
 from rich.text import Text
+from rich.tree import Tree
+
 from ..config import load_config
-from ..utils import logger, colorize, read_sandbox_info, open_with_file_manager
+from ..utils import colorize, logger, open_with_file_manager, read_sandbox_info
 
-
-@click.command("list")
-@click.option("--sandbox", "-s", help="Show details for the specified sandbox only.")
-@click.option(
-    "-f",
-    is_flag=True,
-    help="Open sandbox directory (or all sandboxes dir) in file manager provided by "
-    "ALTBUILDER_FILE_MANAGER env variable or default to mc.",
+app = typer.Typer(
+    name="list",
+    help="List all existing sandboxes with their metadata and optional RPM details.",
 )
-@click.option("--file-manager", help="Specify file manager (e.g., mc or ranger).")
-@click.help_option("--help", "-h")
-def list_cmd(sandbox, f, file_manager):
+
+
+@app.command()
+def list_cmd(
+    ctx: typer.Context,
+    sandbox: str = typer.Option(
+        None, "--sandbox", "-s", help="Show details for the specified sandbox only."
+    ),
+    f: bool = typer.Option(
+        False,
+        "-f",
+        help="Open sandbox directory (or all sandboxes dir) in file manager provided by "
+        "ALTBUILDER_FILE_MANAGER env variable or default to mc.",
+    ),
+    file_manager: str = typer.Option(
+        None, "--file-manager", help="Specify file manager (e.g., mc or ranger)."
+    ),
+):
     """List all existing sandboxes with their metadata and optional RPM details."""
     config = load_config()
     logger.info("Listing all existing sandboxes")
     console = Console()
     environment_dir = config["environment_dir"]
+
+    # Use sandbox from context if not provided
+    sandbox = sandbox or ctx.obj.get("sandbox")
 
     if not os.path.exists(environment_dir):
         console.print(colorize("No sandboxes found.", color="yellow"))
@@ -106,3 +121,7 @@ def list_cmd(sandbox, f, file_manager):
             open_with_file_manager(os.path.join(environment_dir, sandbox), file_manager)
         else:
             open_with_file_manager(environment_dir, file_manager)
+
+
+if __name__ == "__main__":
+    app()

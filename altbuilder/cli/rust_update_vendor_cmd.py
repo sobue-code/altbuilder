@@ -1,24 +1,38 @@
 import os
 import subprocess
 
-import click
+import typer
 
 from ..config import get_sandbox_config, load_config
 from ..core.environment import Environment
 from ..utils import colorize, init_logger, logger
 from ..utils.metrics import Metrics
 
+app = typer.Typer(
+    name="rust-update-vendor",
+    help="Update Rust vendor dependencies, optionally using a specific tag.",
+)
 
-@click.command("rust-update-vendor")
-@click.option(
-    "--sandbox", "-s", help="Sandbox name. Defaults to <branch>-<arch> from config."
-)
-@click.option(
-    "--reinit", "-r", is_flag=True, help="Reinitialize sandbox if it already exists."
-)
-@click.argument("tag", required=False, default="")
-@click.help_option("--help", "-h")
-def rust_update_vendor(sandbox, reinit, tag):
+
+@app.command()
+def rust_update_vendor(
+    sandbox: str = typer.Option(
+        None,
+        "--sandbox",
+        "-s",
+        help="Sandbox name. Defaults to <branch>-<arch> from config.",
+    ),
+    reinit: bool = typer.Option(
+        False,
+        "--reinit",
+        "-r",
+        help="Reinitialize sandbox if it already exists.",
+    ),
+    tag: str = typer.Argument(
+        "",
+        help="Optional tag to use during update.",
+    ),
+):
     """Update Rust vendor dependencies, optionally using a specific tag."""
     config = load_config()
     sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
@@ -101,42 +115,60 @@ def rust_update_vendor(sandbox, reinit, tag):
         # Stage the vendor directory
         subprocess.run(["git", "add", "vendor"], check=True)
 
-        # Commit with appropriate message
-        commit_message = (
-            "Update Rust dependencies"
-            if vendor_tracked
-            else "Vendoring Rust dependencies"
+        # Проверяем, есть ли staged изменения
+        diff_result = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            capture_output=True,
         )
-        subprocess.run(["git", "commit", "-m", commit_message], check=True)
 
-        click.echo(
-            colorize(
-                f"""Rust vendor dependencies updated and committed successfully.
-                    Don't forget to add the following line to your .gear/rules file:
-
-                    tar: vendor name=vendor
-
-                    And this to your .spec:
-
-                    SourceX: vendor.tar
-
-                    %setup -a X
-                """,
-                color="green",
+        if diff_result.returncode == 0:
+            typer.echo(
+                colorize(
+                    "Rust vendor dependencies are already up to date. Nothing to commit.",
+                    color="yellow",
+                )
             )
-        )
-        logger.info(
-            f"Rust vendor dependencies updated and committed in sandbox {sandbox_name}"
-        )
+            logger.info("Rust vendor dependencies up to date, no commit created.")
+        else:
+            commit_message = (
+                "Update Rust dependencies"
+                if vendor_tracked
+                else "Vendoring Rust dependencies"
+            )
+            subprocess.run(["git", "commit", "-m", commit_message], check=True)
+
+            typer.echo(
+                colorize(
+                    f"""Rust vendor dependencies updated and committed successfully.
+Don't forget to add the following line to your .gear/rules file:
+
+tar: vendor name=vendor
+
+And this to your .spec:
+
+SourceX: vendor.tar
+
+%setup -a X
+""",
+                    color="green",
+                )
+            )
+            logger.info(
+                f"Rust vendor dependencies updated and committed in sandbox {sandbox_name}"
+            )
     except EnvironmentError as e:
         logger.error(f"Failed to update Rust vendor dependencies: {e}")
-        click.echo(
+        typer.echo(
             colorize(f"Failed to update Rust vendor dependencies: {e}", color="red")
         )
-        raise
+        raise typer.Exit(code=1)
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to commit Rust vendor dependencies: {e}")
-        click.echo(
+        typer.echo(
             colorize(f"Failed to commit Rust vendor dependencies: {e}", color="red")
         )
-        raise
+        raise typer.Exit(code=1)
+
+
+if __name__ == "__main__":
+    app()
