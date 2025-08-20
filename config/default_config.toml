@@ -4,6 +4,9 @@ mirror = "http://ftp.altlinux.org/pub/distributions"
 mirror_task = "http://git.altlinux.org"
 rdb_url= "https://rdb.altlinux.org"
 packager = "User <user@altlinux.org>"
+base_dir = "/home/<user>/.altbuilder"
+environment_dir = "/home/<user>/.altbuilder/environments"
+build_logs_dir = "/home/<user>/.altbuilder/builds"
 
 [sandboxes.Sisyphus-x86_64]
 mirror = "http://ftp.altlinux.org/pub/distributions"
