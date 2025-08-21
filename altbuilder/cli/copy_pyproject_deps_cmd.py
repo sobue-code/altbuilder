@@ -16,7 +16,13 @@ def copy_pyproject_deps(
         "--sandbox",
         "-s",
         help="Sandbox name. Defaults to <branch>-<arch> from config.",
-    )
+    ),
+    force_commit: bool = typer.Option(
+        False,
+        "--force-commit",
+        "-f",
+        help="Force commit of pyproject_deps.json without confirmation prompt.",
+    ),
 ):
     """Copy pyproject_deps.json from sandbox to .gear/ directory."""
     config = load_config()
@@ -60,32 +66,84 @@ def copy_pyproject_deps(
         # Stage the pyproject_deps.json file
         subprocess.run(["git", "add", ".gear/pyproject_deps.json"], check=True)
 
-        # Commit only if the file was already tracked
-        if pyproject_tracked:
-            commit_message = "Update pyproject_deps.json"
-            subprocess.run(["git", "commit", "-m", commit_message], check=True)
-            logger.info(
-                f"pyproject_deps.json updated and committed in sandbox {sandbox_name}"
-            )
+        # Check if there are changes to commit
+        status_proc = subprocess.run(
+            ["git", "status", "--porcelain", ".gear/pyproject_deps.json"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        has_changes = bool(status_proc.stdout.strip())
+
+        # Commit logic: prompt for confirmation unless force_commit is True
+        commit_message = "Update pyproject_deps.json" if pyproject_tracked else "Add pyproject_deps.json"
+        if has_changes:
+            if force_commit:
+                subprocess.run(["git", "commit", "-m", commit_message], check=True)
+                logger.info(
+                    f"pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}"
+                )
+                typer.echo(
+                    colorize(
+                        f"pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}",
+                        color="green",
+                    )
+                )
+            elif typer.confirm(
+                f"Commit changes to pyproject_deps.json with message '{commit_message}'?",
+                default=True,
+            ):
+                subprocess.run(["git", "commit", "-m", commit_message], check=True)
+                logger.info(
+                    f"pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}"
+                )
+                typer.echo(
+                    colorize(
+                        f"pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}",
+                        color="green",
+                    )
+                )
+            else:
+                logger.info(
+                    f"""pyproject_deps.json added to git index but not committed in sandbox {sandbox_name}.
+                    Don't forget to add this line to your .gear/rules file:
+
+                    copy: .gear/pyproject_deps.json
+
+                    And this to your .spec:
+
+                    SourceX: %pyproject_deps_config_name
+                    """
+                )
+                typer.echo(
+                    colorize(
+                        f"""pyproject_deps.json added to git index but not committed in sandbox {sandbox_name}.
+                        Don't forget to add this line to your .gear/rules file:
+
+                        copy: .gear/pyproject_deps.json
+
+                        And this to your .spec:
+
+                        SourceX: %pyproject_deps_config_name
+                        """,
+                        color="yellow",
+                    )
+                )
         else:
-            logger.info(
-                f"""pyproject_deps.json added to git index but not committed in sandbox {sandbox_name}.
-                Don't forget to add this line to your .gear/rules file:
-
-                copy: .gear/pyproject_deps.json
-
-                And this to your .spec:
-
-                SourceX: %pyproject_deps_config_name
-                """
+            logger.info(f"pyproject_deps.json is unchanged in sandbox {sandbox_name}, no commit needed")
+            typer.echo(
+                colorize(
+                    f"pyproject_deps.json is unchanged in sandbox {sandbox_name}, no commit needed",
+                    color="yellow",
+                )
             )
 
         typer.echo(colorize(f"pyproject_deps.json copied to .gear/", color="green"))
         logger.info(f"pyproject_deps.json copied to .gear/ in sandbox {sandbox_name}")
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to copy or commit pyproject_deps.json: {e}")
+        logger.error(f"Failed to copy or stage pyproject_deps.json: {e}")
         typer.echo(
-            colorize(f"Failed to copy or commit pyproject_deps.json: {e}", color="red")
+            colorize(f"Failed to copy or stage pyproject_deps.json: {e}", color="red")
         )
         raise typer.Exit(code=1)
 
