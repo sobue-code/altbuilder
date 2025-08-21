@@ -1,13 +1,15 @@
-import os
 import json
+import os
 import shlex
 import shutil
 import subprocess
 from datetime import datetime
-from ..exceptions import EnvironmentError
-from ..utils import logger, get_host_arch, run_logged_command, generate_sources_list
-from ..utils.metrics import Metrics
+
 from ..adapters.hasher import HasherAdapter
+from ..exceptions import EnvironmentError
+from ..utils import (generate_sources_list, get_host_arch, logger,
+                     run_logged_command)
+from ..utils.metrics import Metrics
 
 
 class Environment:
@@ -389,7 +391,7 @@ Debug::pkgProblemResolver "true";
                 raise EnvironmentError(f"Failed to copy {src} to {dst}: {e}")
 
     def copy_from(self, src: str, dst: str):
-        """Copy files or directories from the sandbox to the host."""
+        """Copy files or directories from the sandbox to the host using tar."""
         if not self.exists():
             raise EnvironmentError(f"Sandbox {self.name} does not exist.")
 
@@ -401,81 +403,42 @@ Debug::pkgProblemResolver "true";
         env["share_mount"] = "yes"
 
         try:
-            # Check if the source is a directory
+            # Ensure destination directory exists
+            dst_dir = os.path.dirname(dst) if os.path.basename(dst) else dst
+            os.makedirs(dst_dir, exist_ok=True)
+
+            # Use tar to copy both files and directories
             cmd = [
                 "hsh-run",
                 "--wait-lock",
+                f"--mount={exchange_dir}:{mount_point}",
                 "--mountpoints=/proc",
                 self.hasher_dir,
                 "--",
-                "test",
-                "-d",
-                src,
+                "tar",
+                "-C",
+                os.path.dirname(src) or ".",
+                "-cf",
+                "-",
+                os.path.basename(src),
             ]
             command_str = " ".join(cmd)
             with self.metrics.track_command(
                 command=command_str, sandbox_name=self.name
             ):
-                is_dir_proc = subprocess.run(
+                proc = subprocess.Popen(
                     cmd,
+                    stdout=subprocess.PIPE,
                     env=env,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
                 )
-            is_dir = is_dir_proc.returncode == 0
-
-            if is_dir:
-                # Copy directory using tar to preserve structure
-                os.makedirs(dst, exist_ok=True)
-                cmd = [
-                    "hsh-run",
-                    "--wait-lock",
-                    f"--mount={exchange_dir}:{mount_point}",
-                    "--mountpoints=/proc",
-                    self.hasher_dir,
-                    "--",
-                    "tar",
-                    "-C",
-                    src,
-                    "-cf",
-                    "-",
-                    ".",
-                ]
-                command_str = " ".join(cmd)
-                with self.metrics.track_command(
-                    command=command_str, sandbox_name=self.name
-                ):
-                    proc = subprocess.Popen(
-                        cmd,
-                        stdout=subprocess.PIPE,
-                        env=env,
-                    )
-                    extract = subprocess.run(
-                        ["tar", "-C", dst, "-xf", "-"], stdin=proc.stdout
-                    )
-                    proc.wait()
-                    if proc.returncode != 0:
-                        raise subprocess.CalledProcessError(proc.returncode, proc.args)
-            else:
-                # Copy single file
-                cmd = [
-                    "hsh-run",
-                    "--wait-lock",
-                    f"--mount={exchange_dir}:{mount_point}",
-                    "--mountpoints=/proc",
-                    self.hasher_dir,
-                    "--",
-                    "cp",
-                    "-a",
-                    src,
-                    f"{mount_point}/",
-                ]
-                command_str = " ".join(cmd)
-                with self.metrics.track_command(
-                    command=command_str, sandbox_name=self.name
-                ):
-                    subprocess.run(cmd, check=True, env=env)
-                shutil.move(os.path.join(exchange_dir, os.path.basename(src)), dst)
+                extract = subprocess.run(
+                    ["tar", "-C", dst, "-xf", "-"],
+                    stdin=proc.stdout,
+                    check=True,
+                )
+                proc.wait()
+                if proc.returncode != 0:
+                    raise subprocess.CalledProcessError(proc.returncode, proc.args)
 
             logger.info(f"Successfully copied {src} from sandbox {self.name} to {dst}")
         except subprocess.CalledProcessError as e:
