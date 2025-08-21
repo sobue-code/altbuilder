@@ -404,18 +404,23 @@ altbuilder copy from-sandbox /sandbox/path /host/path
 
 #### `altbuilder rpmdiff`
 
-Compare two RPM packages.
+Compare a locally built RPM with the latest package from ALT Linux repositories (or compare two given RPM files).  
+The command can take a **package name** (it will fetch the remote RPM and find the local one in the sandbox) or two explicit RPM paths.
 
-```bash
-altbuilder rpmdiff old.rpm new.rpm
-```
+- Compare local sandbox build with remote package (by name):
+  ```
+  altbuilder rpmdiff -s Sisyphus-x86_64 python3-module-foo
+  ```
 
-Options:
+- Compare **requires and provides only**:
+  ```
+  altbuilder rpmdiff -s Sisyphus-x86_64 --requires --provides python3-module-foo
+  ```
 
-- `--requires`: Compare dependencies
-- `--provides`: Compare provided capabilities
-- `--conflicts`: Compare conflicts
-- `--files`: Compare file lists
+- Compare two specific RPM files:
+  ```
+  altbuilder rpmdiff /path/to/old.rpm /path/to/new.rpm
+  ```
 
 #### Development Utilities
 
