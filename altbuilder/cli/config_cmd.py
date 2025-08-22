@@ -5,9 +5,9 @@ import subprocess
 import tomli_w
 import typer
 
-from ..config import USER_CONFIG_DIR, USER_CONFIG_FILE, load_config
-from ..exceptions import ConfigError
-from ..utils import colorize, logger
+from altbuilder.config import USER_CONFIG_DIR, USER_CONFIG_FILE, load_config
+from altbuilder.exceptions import ConfigError
+from altbuilder.utils import colorize, logger
 
 app = typer.Typer(
     name="config",

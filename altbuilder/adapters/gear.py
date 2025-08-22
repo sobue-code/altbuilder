@@ -1,8 +1,6 @@
-import subprocess
-import os
 from .base import ToolAdapter
-from ..utils.logger import logger
-from ..utils.helpers import run_logged_command
+from altbuilder.utils.logger import logger
+from altbuilder.utils.helpers import run_logged_command
 
 
 class GearAdapter(ToolAdapter):

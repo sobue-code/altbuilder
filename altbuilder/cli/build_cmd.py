@@ -2,11 +2,11 @@ import os
 
 import typer
 
-from ..config import load_config
-from ..core.build_manager import BuildManager
-from ..exceptions import ToolError
-from ..utils import colorize, get_spec_metadata, init_logger
-from ..utils.setup_sandbox import setup_sandbox
+from altbuilder.config import load_config
+from altbuilder.core.build_manager import BuildManager
+from altbuilder.exceptions import ToolError
+from altbuilder.utils import colorize, get_spec_metadata, init_logger
+from altbuilder.utils.setup_sandbox import setup_sandbox
 
 app = typer.Typer(
     name="build",

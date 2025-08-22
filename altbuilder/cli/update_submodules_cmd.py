@@ -4,8 +4,8 @@ import tempfile
 
 import typer
 
-from ..config import load_config
-from ..utils import colorize, init_logger, logger
+from altbuilder.config import load_config
+from altbuilder.utils import colorize, init_logger, logger
 
 app = typer.Typer(
     name="update-submodules",

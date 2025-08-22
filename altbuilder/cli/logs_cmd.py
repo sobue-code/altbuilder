@@ -12,8 +12,8 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.tree import Tree
 
-from ..config import load_config
-from ..utils import colorize, init_logger, logger, open_with_file_manager
+from altbuilder.config import load_config
+from altbuilder.utils import colorize, init_logger, logger, open_with_file_manager
 
 app = typer.Typer(
     name="logs",

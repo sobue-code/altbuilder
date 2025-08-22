@@ -6,9 +6,9 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
-from ..config import load_config
-from ..utils.logger import logger
-from ..utils.metrics import Metrics
+from altbuilder.config import load_config
+from altbuilder.utils.logger import logger
+from altbuilder.utils.metrics import Metrics
 
 app = typer.Typer(name="track", help="Display information about the current task.")
 

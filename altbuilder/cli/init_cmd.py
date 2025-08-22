@@ -1,7 +1,7 @@
 import typer
 
-from ..config import load_config
-from ..utils.setup_sandbox import setup_sandbox
+from altbuilder.config import load_config
+from altbuilder.utils.setup_sandbox import setup_sandbox
 
 app = typer.Typer(
     name="init",

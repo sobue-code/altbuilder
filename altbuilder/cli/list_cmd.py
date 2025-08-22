@@ -7,8 +7,8 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.tree import Tree
 
-from ..config import load_config
-from ..utils import colorize, logger, open_with_file_manager, read_sandbox_info
+from altbuilder.config import load_config
+from altbuilder.utils import colorize, logger, open_with_file_manager, read_sandbox_info
 
 app = typer.Typer(
     name="list",

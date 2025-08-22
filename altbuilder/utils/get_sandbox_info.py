@@ -1,6 +1,6 @@
 import os
 import json
-from ..core.environment import Environment
+from altbuilder.core.environment import Environment
 
 
 def read_sandbox_info(sandbox_path):

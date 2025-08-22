@@ -2,9 +2,9 @@ import os
 import shutil
 import subprocess
 import typer
-from ..config import load_config, get_sandbox_config
-from ..core.environment import Environment
-from ..utils import init_logger, logger, colorize, run_logged_command
+from altbuilder.config import load_config, get_sandbox_config
+from altbuilder.core.environment import Environment
+from altbuilder.utils import init_logger, logger, colorize, run_logged_command
 
 app = typer.Typer(
     name="clean",

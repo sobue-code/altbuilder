@@ -3,7 +3,7 @@ from typing import List, Optional
 
 import typer
 
-from ..utils import colorize
+from altbuilder.utils import colorize
 
 app = typer.Typer(
     name="merge-tag",

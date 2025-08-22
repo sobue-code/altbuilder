@@ -3,9 +3,9 @@ from typing import List
 import typer
 import subprocess
 
-from ..config import get_sandbox_config, load_config
-from ..core.environment import Environment
-from ..utils import colorize, init_logger
+from altbuilder.config import get_sandbox_config, load_config
+from altbuilder.core.environment import Environment
+from altbuilder.utils import colorize, init_logger
 
 app = typer.Typer()
 

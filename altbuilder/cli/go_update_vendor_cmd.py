@@ -3,10 +3,10 @@ import subprocess
 
 import typer
 
-from ..config import get_sandbox_config, load_config
-from ..core.environment import Environment
-from ..utils import colorize, init_logger, logger
-from ..utils.metrics import Metrics
+from altbuilder.config import get_sandbox_config, load_config
+from altbuilder.core.environment import Environment
+from altbuilder.utils import colorize, init_logger, logger
+from altbuilder.utils.metrics import Metrics
 
 app = typer.Typer(
     name="go-update-vendor",

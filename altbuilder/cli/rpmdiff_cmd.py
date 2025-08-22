@@ -7,8 +7,8 @@ import requests
 import typer
 from bs4 import BeautifulSoup
 
-from ..config import get_sandbox_config, load_config
-from ..utils import colorize, init_logger, logger
+from altbuilder.config import get_sandbox_config, load_config
+from altbuilder.utils import colorize, init_logger, logger
 
 app = typer.Typer(
     name="rpmdiff",
@@ -399,3 +399,7 @@ def rpmdiff_cmd(
                     "yellow",
                 )
             )
+
+
+if __name__ == "__main__":
+    app()

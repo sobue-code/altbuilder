@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import subprocess
-from ..exceptions import ToolError
+from altbuilder.exceptions import ToolError
 
 
 class ToolAdapter(ABC):

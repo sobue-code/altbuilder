@@ -2,9 +2,9 @@ import os
 import subprocess
 import typer
 
-from ..config import get_sandbox_config, load_config
-from ..core.environment import Environment
-from ..utils import colorize, init_logger, logger
+from altbuilder.config import get_sandbox_config, load_config
+from altbuilder.core.environment import Environment
+from altbuilder.utils import colorize, init_logger, logger
 
 app = typer.Typer(name="copy-pyproject-deps", help="Copy pyproject_deps.json from sandbox to .gear/ directory.")
 

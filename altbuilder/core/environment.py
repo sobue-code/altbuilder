@@ -5,16 +5,17 @@ import shutil
 import subprocess
 from datetime import datetime
 
-from ..adapters.hasher import HasherAdapter
-from ..exceptions import EnvironmentError
-from ..utils import (generate_sources_list, get_host_arch, logger,
-                     run_logged_command)
-from ..utils.metrics import Metrics
+from altbuilder.exceptions import EnvironmentError
+from altbuilder.utils import (generate_sources_list, get_host_arch, logger,
+                              run_logged_command)
+from altbuilder.utils.metrics import Metrics
 
 
 class Environment:
     def __init__(self, name, config, task_id=None, adapter=None):
         """Initialize Environment with name, config, and optional task ID and adapter."""
+        from altbuilder.adapters.hasher import HasherAdapter
+
         self.name = name
         self.config = config
         self.branch = config["branch"]

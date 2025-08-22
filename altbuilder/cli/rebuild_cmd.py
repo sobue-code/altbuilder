@@ -6,11 +6,11 @@ import requests
 import typer
 from bs4 import BeautifulSoup
 
-from ..adapters.hasher import HasherAdapter
-from ..config import get_sandbox_config, load_config
-from ..core.build_manager import BuildManager
-from ..core.environment import Environment
-from ..utils import colorize, get_spec_metadata, init_logger, logger
+from altbuilder.adapters.hasher import HasherAdapter
+from altbuilder.config import get_sandbox_config, load_config
+from altbuilder.core.build_manager import BuildManager
+from altbuilder.core.environment import Environment
+from altbuilder.utils import colorize, get_spec_metadata, init_logger, logger
 
 
 def get_local_repo_dir(mirror, branch: str) -> str:

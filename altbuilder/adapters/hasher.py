@@ -1,8 +1,8 @@
 import os
 from .base import ToolAdapter
-from ..utils.logger import logger
-from ..utils.metrics import Metrics
-from ..utils.helpers import run_logged_command
+from altbuilder.utils.logger import logger
+from altbuilder.utils.metrics import Metrics
+from altbuilder.utils.helpers import run_logged_command
 
 
 class HasherAdapter(ToolAdapter):

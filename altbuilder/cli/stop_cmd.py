@@ -4,9 +4,9 @@ import signal
 
 import typer
 
-from ..config import load_config
-from ..utils.logger import logger
-from ..utils.metrics import Metrics
+from altbuilder.config import load_config
+from altbuilder.utils.logger import logger
+from altbuilder.utils.metrics import Metrics
 
 app = typer.Typer(
     name="stop",
