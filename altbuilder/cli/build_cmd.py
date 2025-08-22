@@ -4,6 +4,7 @@ import typer
 
 from ..config import load_config
 from ..core.build_manager import BuildManager
+from ..exceptions import ToolError
 from ..utils import colorize, get_spec_metadata, init_logger
 from ..utils.setup_sandbox import setup_sandbox
 
@@ -69,6 +70,14 @@ def build_cmd(
 
     # Set up sandbox environment
     env = setup_sandbox(sandbox, branch, arch, reinit, config, task_id=task)
+    if env is None:
+        typer.echo(
+            colorize(
+                "Error: Failed to initialize sandbox.",
+                color="red",
+            )
+        )
+        raise typer.Exit(code=1)
 
     # Get package metadata
     package_name, version, release = get_spec_metadata(build_target, is_src_rpm)
@@ -94,27 +103,36 @@ def build_cmd(
     build_number = 1
     while os.path.exists(os.path.join(log_dir, f"build_{build_number}")):
         build_number += 1
-    build_log_dir = os.path.join(log_dir, f"build_{build_number}")
-    os.makedirs(build_log_dir, exist_ok=True)
+    built_log_dir = os.path.join(log_dir, f"build_{build_number}")
+    os.makedirs(built_log_dir, exist_ok=True)
 
     # Setup build-specific logger
-    build_log = os.path.join(build_log_dir, "build.log")
-    cmd_log = os.path.join(build_log_dir, "commands.log")
-    init_logger(env.name, build_log_dir, config, build_log=build_log, cmd_log=cmd_log)
+    build_log = os.path.join(built_log_dir, "build.log")
+    cmd_log = os.path.join(built_log_dir, "commands.log")
+    init_logger(env.name, built_log_dir, config, build_log=build_log, cmd_log=cmd_log)
 
     # Perform the build
     builder = BuildManager(env)
-    builder.build(
-        build_target=build_target,
-        is_src_rpm=is_src_rpm,
-        apt_conf=env.apt_conf,
-        build_log_dir=build_log_dir,
-        no_check=no_check,
-        hsh_extra=hsh_extra,
-        rpmbuild_extra=rpmbuild_extra,
-    )
-    typer.echo(colorize(f"Build completed in sandbox {env.name}.", color="green"))
-    typer.echo(colorize(f"Build logs available at: {build_log_dir}", color="cyan"))
+    try:
+        builder.build(
+            build_target=build_target,
+            is_src_rpm=is_src_rpm,
+            apt_conf=env.apt_conf,
+            build_log_dir=built_log_dir,
+            no_check=no_check,
+            hsh_extra=hsh_extra,
+            rpmbuild_extra=rpmbuild_extra,
+        )
+        typer.echo(colorize(f"Build completed in sandbox {env.name}.", color="green"))
+        typer.echo(colorize(f"Build logs available at: {built_log_dir}", color="cyan"))
+    except ToolError as e:
+        typer.echo(
+            colorize(
+                f"Error building package {package_name}: {str(e)}. Logs available at: {built_log_dir}",
+                color="red",
+            )
+        )
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":
