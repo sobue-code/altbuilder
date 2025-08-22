@@ -1,0 +1,3 @@
+tar: .
+spec: .gear/altbuilder.spec
+copy: .gear/pyproject_deps.json
