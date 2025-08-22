@@ -1,3 +1,5 @@
+import importlib.metadata
+
 import typer
 
 from ..config import load_config
@@ -31,8 +33,22 @@ app = typer.Typer(
 )
 
 
+def get_version() -> str:
+    """Returns the project version from metadata."""
+    try:
+        return importlib.metadata.version("altbuilder")
+    except importlib.metadata.PackageNotFoundError:
+        try:
+            import tomli
+
+            with open("pyproject.toml", "rb") as f:
+                config = tomli.load(f)
+            return config["project"]["version"]
+        except (FileNotFoundError, KeyError):
+            return "unknown"
+
 # Add global sandbox option
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main_callback(
     ctx: typer.Context,
     sandbox: str = typer.Option(
@@ -41,12 +57,24 @@ def main_callback(
         "-s",
         help="Sandbox name (e.g., Sisyphus-x86_64). Defaults to <branch>-<arch> from config.",
     ),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        help="Show version and exit.",
+        callback=lambda value: (
+            typer.echo(f"{get_version()}") or typer.Exit() if value else None
+        ),
+        is_eager=True,
+    ),
 ):
     """Command-line interface for managing ALT Linux sandboxes."""
-    ctx.obj["sandbox"] = sandbox
-    config = load_config()
-    init_logger(config=config)
-    logger.info(f"Loaded config from {config.get('config_file', 'default')}")
+    if ctx.invoked_subcommand is None and not version:
+        raise typer.Exit(code=1)
+    if not version:
+        ctx.obj["sandbox"] = sandbox
+        config = load_config()
+        init_logger(config=config)
+        logger.info(f"Loaded config from {config.get('config_file', 'default')}")
 
 
 # Add commands (only init_cmd is Typer-based for now)
