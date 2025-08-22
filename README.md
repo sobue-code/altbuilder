@@ -249,20 +249,6 @@ Reinitialize configuration:
 altbuilder config --init --force
 ```
 
-#### `altbuilder completion`
-
-Generate and optionally install shell completion scripts for bash, zsh, or fish to enable command autocompletion.
-
-```bash
-altbuilder completion zsh
-altbuilder completion zsh --install
-```
-
-Options:
-
-- `shell`: Shell type (`bash`, `zsh`, or `fish`)
-- `--install`: Install the completion script to the shell’s configuration directory and provide sourcing instruction
-
 ## Commands
 
 ### Sandbox Management
