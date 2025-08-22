@@ -3,12 +3,12 @@ from pathlib import Path
 import tomli
 
 # import tomllib as tomli
-from .utils.logger import logger
-from .exceptions import ConfigError
+from ..utils.logger import logger
+from ..exceptions import ConfigError
 
 USER_CONFIG_DIR = Path.home() / ".altbuilder"
 USER_CONFIG_FILE = USER_CONFIG_DIR / "config.toml"
-DEFAULT_CONFIG_FILE = Path(__file__).parent.parent / "config" / "default_config.toml"
+DEFAULT_CONFIG_FILE = Path(__file__).parent / "default_config.toml"
 
 
 def load_config(config_file=None):
