@@ -29,7 +29,7 @@ def get_env(sandbox: Optional[str]) -> Environment:
     return env
 
 
-@copy_app.command("to-sandbox")
+@copy_app.command("to")
 def copy_to_sandbox(
     host_path: str = typer.Argument(
         ..., exists=True, help="Path on the host to copy from."
@@ -59,7 +59,7 @@ def copy_to_sandbox(
         raise typer.Exit(code=1)
 
 
-@copy_app.command("from-sandbox")
+@copy_app.command("from")
 def copy_from_sandbox(
     sandbox_path: str = typer.Argument(
         ..., help="Path inside the sandbox to copy from."
