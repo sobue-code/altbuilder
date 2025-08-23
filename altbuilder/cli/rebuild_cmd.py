@@ -1,90 +1,13 @@
 import os
-import re
-import tempfile
 
-import requests
 import typer
-from bs4 import BeautifulSoup
 
 from altbuilder.adapters.hasher import HasherAdapter
 from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.build_manager import BuildManager
 from altbuilder.core.environment import Environment
+from altbuilder.core.remote import RemoteRepository
 from altbuilder.utils import colorize, get_spec_metadata, init_logger, logger
-
-
-def get_local_repo_dir(mirror, branch: str) -> str:
-    """Return local repo directory path for given mirror and branch."""
-    if not mirror.startswith("file:"):
-        raise ValueError("Invalid local mirror URL: must start with 'file:'")
-    local_path = mirror[5:]
-    if branch.lower() == "sisyphus":
-        return os.path.join(local_path, branch.lower(), "last", "files", "SRPMS")
-    return None
-
-
-def find_src_rpm_local(repo_dir: str, package_name: str) -> str | None:
-    """Search local SRPMS dir for latest matching src.rpm file by exact name."""
-    try:
-        files = os.listdir(repo_dir)
-    except (FileNotFoundError, PermissionError) as e:
-        raise ValueError(f"Repository directory inaccessible: {e}")
-
-    pattern = re.compile(
-        rf"^{re.escape(package_name)}-[0-9][0-9a-zA-Z._%+-]+-[0-9a-zA-Z._%+-]+\.src\.rpm$"
-    )
-    matching_files = sorted([f for f in files if pattern.match(f)])
-    if not matching_files:
-        return None
-    return os.path.join(repo_dir, matching_files[-1])
-
-
-def get_remote_repo_url(mirror: str, branch: str) -> str:
-    """Build remote repo SRPMS URL."""
-    if not mirror.startswith("http"):
-        raise ValueError("Invalid remote mirror URL: must start with 'http'")
-    if branch.lower() == "sisyphus":
-        return f"{mirror}/ALTLinux/{branch}/files/SRPMS/"
-    return f"{mirror}/ALTLinux/{branch}/branch/SRPMS/"
-
-
-def find_src_rpm_remote(
-    repo_url: str, package_name: str
-) -> tuple[str | None, str | None]:
-    """Search remote SRPMS dir for latest matching src.rpm file by exact name."""
-    try:
-        response = requests.get(repo_url, timeout=10)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        raise ValueError(f"Failed to access remote repository {repo_url}: {e}")
-
-    soup = BeautifulSoup(response.text, "html.parser")
-    links = [link["href"] for link in soup.find_all("a", href=True)]
-
-    pattern = re.compile(
-        rf"^{re.escape(package_name)}-[0-9][0-9a-zA-Z._%+-]+-[0-9a-zA-Z._%+-]+\.src\.rpm$"
-    )
-    matching_files = sorted([f for f in links if pattern.match(f)])
-    if not matching_files:
-        return None, None
-    return repo_url + matching_files[-1], matching_files[-1]
-
-
-def download_src_rpm(src_rpm_url: str, src_rpm_filename: str) -> str:
-    """Download src.rpm to temp location, return local path."""
-    temp_dir = tempfile.mkdtemp()
-    local_path = os.path.join(temp_dir, src_rpm_filename)
-    try:
-        with requests.get(src_rpm_url, stream=True, timeout=10) as r:
-            r.raise_for_status()
-            with open(local_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
-        return local_path
-    except (requests.RequestException, IOError) as e:
-        raise ValueError(f"Failed to download {src_rpm_url}: {e}")
-
 
 app = typer.Typer(
     name="rebuild",
@@ -163,30 +86,29 @@ def rebuild_cmd(
 
     temp_file, src_rpm_path = None, None
     try:
-        if mirror.startswith("file:"):
-            repo_dir = get_local_repo_dir(mirror, branch)
-            src_rpm_path = find_src_rpm_local(repo_dir, package_name)
-            if src_rpm_path is None:
-                typer.echo(
-                    colorize(
-                        f"No matching src.rpm found for {package_name} in {repo_dir}",
-                        color="red",
-                    )
-                )
-                raise typer.Exit(code=1)
+        # Initialize RemoteRepository
+        remote_repo = RemoteRepository(config)
 
-        elif mirror.startswith("http"):
-            repo_url = get_remote_repo_url(mirror, branch)
-            src_rpm_url, src_rpm_filename = find_src_rpm_remote(repo_url, package_name)
-            if not src_rpm_url or not src_rpm_filename:
-                typer.echo(
-                    colorize(
-                        f"No matching src.rpm found for {package_name} at {repo_url}",
-                        color="red",
-                    )
+        # Search for src.rpm using RemoteRepository
+        src_rpm_url_or_path, src_rpm_filename = remote_repo.find_src_rpm(
+            package_name, mirror, branch
+        )
+        if not src_rpm_url_or_path or not src_rpm_filename:
+            typer.echo(
+                colorize(
+                    f"No matching src.rpm found for {package_name} in {mirror} (branch: {branch})",
+                    color="red",
                 )
-                raise typer.Exit(code=1)
-            temp_file = download_src_rpm(src_rpm_url, src_rpm_filename)
+            )
+            raise typer.Exit(code=1)
+
+        # Handle local or remote src.rpm
+        if mirror.startswith("file:"):
+            src_rpm_path = src_rpm_url_or_path
+        elif mirror.startswith("http"):
+            temp_file = remote_repo.download_src_rpm(
+                src_rpm_url_or_path, src_rpm_filename
+            )
             src_rpm_path = temp_file
         else:
             typer.echo(colorize(f"Unsupported mirror type: {mirror}", color="red"))
