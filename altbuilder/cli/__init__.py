@@ -25,6 +25,7 @@ from .shell_cmd import shell_cmd
 from .stop_cmd import stop_cmd
 from .track_cmd import track_cmd
 from .update_submodules_cmd import update_submodules
+from .git_alt_cmd import git_alt_cmd
 
 app = typer.Typer(
     name="altbuilder",
@@ -98,6 +99,7 @@ app.command("npm-update-vendor")(npm_update_vendor)
 app.command("update-submodules")(update_submodules)
 app.command("merge-tag")(merge_tag)
 app.command("rpmdiff")(rpmdiff_cmd)
+app.command("git.alt")(git_alt_cmd)
 app.add_typer(copy_app, name="copy")
 
 if __name__ == "__main__":
