@@ -17,3 +17,8 @@ class BuildError(AltBuilderError):
 class EnvironmentError(AltBuilderError):
     """Raised for sandbox environment errors."""
     pass
+
+
+class RemoteError(AltBuilderError):
+    """Raised for errors related to remote repository operations."""
+    pass
