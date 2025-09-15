@@ -6,14 +6,16 @@ import tempfile
 import requests
 import typer
 from bs4 import BeautifulSoup
+from rich.console import Console
 
 from altbuilder.config import get_sandbox_config, load_config
-from altbuilder.utils import colorize, init_logger, logger
+from altbuilder.utils import init_logger, logger
 
 app = typer.Typer(
     name="rpmdiff",
     help="Compare two RPM packages and display differences in dependencies, provides, conflicts, and file lists.",
 )
+console = Console()
 
 
 def get_remote_repo_urls(mirror: str, branch: str, arch: str) -> tuple[str, str]:
@@ -187,7 +189,7 @@ def rpmdiff_cmd(
     try:
         config = load_config()
     except Exception as e:
-        typer.echo(colorize(f"Failed to load configuration: {e}", color="red"))
+        console.print(f"Failed to load configuration: {e}", style="red")
         raise typer.Exit(code=1)
 
     # Determine categories to compare
@@ -215,7 +217,7 @@ def rpmdiff_cmd(
 
     def compare_lists(label: str, old_list: list[str], new_list: list[str]):
         """
-        Diff two lists via 'diff' and colorize output.
+        Diff two lists via 'diff' and highlight output.
         Ensures consistent line endings, removes duplicates, and strips whitespace.
         Logs input for debugging if differences are detected.
         """
@@ -254,14 +256,14 @@ def rpmdiff_cmd(
 
             # Output results
             if diff_output.strip():
-                typer.echo(colorize(f"@@ {label} @@", color="cyan"))
+                console.print(f"@@ {label} @@", style="cyan")
                 for line in diff_output.splitlines():
                     if line.startswith("-"):
-                        typer.echo(colorize(line, color="red"))
+                        console.print(line, style="red", markup=False)
                     elif line.startswith("+"):
-                        typer.echo(colorize(line, color="green"))
+                        console.print(line, style="green", markup=False)
             else:
-                typer.echo(colorize(f"@@ {label} (no changes) @@", color="cyan"))
+                console.print(f"@@ {label} (no changes) @@", style="cyan")
 
     # Determine comparison inputs
     old_package = None
@@ -281,10 +283,9 @@ def rpmdiff_cmd(
         try:
             sandbox_config = get_sandbox_config(sandbox_name, config)
         except Exception as e:
-            typer.echo(
-                colorize(
-                    f"Failed to get sandbox configuration {sandbox_name}: {e}", "red"
-                )
+            console.print(
+                f"Failed to get sandbox configuration {sandbox_name}: {e}",
+                style="red",
             )
             raise typer.Exit(code=1)
 
@@ -292,24 +293,22 @@ def rpmdiff_cmd(
         try:
             init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
         except Exception as e:
-            typer.echo(colorize(f"Failed to initialize logger: {e}", "red"))
+            console.print(f"Failed to initialize logger: {e}", style="red")
             raise typer.Exit(code=1)
 
         # Find local RPM in sandbox
         sandbox_path = os.path.join(config["environment_dir"], sandbox_name)
         if not os.path.exists(sandbox_path):
-            typer.echo(colorize(f"Sandbox {sandbox_name} does not exist.", "red"))
+            console.print(f"Sandbox {sandbox_name} does not exist.", style="red")
             raise typer.Exit(code=1)
 
         local_package = find_local_rpm(
             sandbox_path, package_name, sandbox_config["arch"]
         )
         if not local_package:
-            typer.echo(
-                colorize(
-                    f"No matching RPM found for {package_name} in sandbox {sandbox_name}",
-                    "red",
-                )
+            console.print(
+                f"No matching RPM found for {package_name} in sandbox {sandbox_name}",
+                style="red",
             )
             raise typer.Exit(code=1)
 
@@ -318,15 +317,15 @@ def rpmdiff_cmd(
         repo_branch = branch or sandbox_config.get("branch")
         repo_arch = arch or sandbox_config.get("arch")
         if not mirror or not repo_branch:
-            typer.echo(
-                colorize("Mirror or branch is not specified in configuration.", "red")
+            console.print(
+                "Mirror or branch is not specified in configuration.",
+                style="red",
             )
             raise typer.Exit(code=1)
         if mirror.startswith("file:"):
-            typer.echo(
-                colorize(
-                    "Local mirrors are not supported for remote RPM comparison.", "red"
-                )
+            console.print(
+                "Local mirrors are not supported for remote RPM comparison.",
+                style="red",
             )
             raise typer.Exit(code=1)
 
@@ -334,27 +333,24 @@ def rpmdiff_cmd(
             repo_urls = get_remote_repo_urls(mirror, repo_branch, repo_arch)
             rpm_url, rpm_filename = find_rpm_remote(repo_urls, package_name)
             if not rpm_url or not rpm_filename:
-                typer.echo(
-                    colorize(
-                        f"No matching RPM found for {package_name} in {repo_urls[0]} or {repo_urls}",
-                        "red",
-                    )
+                console.print(
+                    f"No matching RPM found for {package_name} in {repo_urls[0]} or {repo_urls}",
+                    style="red",
                 )
                 raise typer.Exit(code=1)
             old_package = download_rpm(rpm_url, rpm_filename)
             temp_file = old_package
         except Exception as e:
-            typer.echo(
-                colorize(
-                    f"Failed to retrieve remote RPM for {package_name}: {e}", "red"
-                )
+            console.print(
+                f"Failed to retrieve remote RPM for {package_name}: {e}",
+                style="red",
             )
             raise typer.Exit(code=1)
 
     # Validate both RPMs
     for pkg in (old_package, local_package):
         if not os.path.exists(pkg):
-            typer.echo(colorize(f"Error: {pkg} does not exist.", "red"))
+            console.print(f"Error: {pkg} does not exist.", style="red")
             raise typer.Exit(code=1)
         try:
             subprocess.run(
@@ -364,12 +360,12 @@ def rpmdiff_cmd(
                 stderr=subprocess.DEVNULL,
             )
         except subprocess.CalledProcessError:
-            typer.echo(colorize(f"Error: {pkg} is not a valid RPM package.", "red"))
+            console.print(f"Error: {pkg} is not a valid RPM package.", style="red")
             raise typer.Exit(code=1)
 
     # Headers
-    typer.echo(colorize(f"--- {os.path.basename(old_package)}", "yellow"))
-    typer.echo(colorize(f"+++ {os.path.basename(local_package)}", "yellow"))
+    console.print(f"--- {os.path.basename(old_package)}", style="yellow")
+    console.print(f"+++ {os.path.basename(local_package)}", style="yellow")
 
     # Build selected categories
     categories: list[tuple[str, str]] = []
@@ -393,11 +389,9 @@ def rpmdiff_cmd(
         try:
             os.remove(temp_file)
         except OSError as e:
-            typer.echo(
-                colorize(
-                    f"Warning: failed to remove temporary file {temp_file}: {e}",
-                    "yellow",
-                )
+            console.print(
+                f"Warning: failed to remove temporary file {temp_file}: {e}",
+                style="yellow",
             )
 
 

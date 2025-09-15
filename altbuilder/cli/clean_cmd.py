@@ -2,9 +2,10 @@ import os
 import shutil
 import subprocess
 import typer
+from rich import print as rich_print
 from altbuilder.config import load_config, get_sandbox_config
 from altbuilder.core.environment import Environment
-from altbuilder.utils import init_logger, logger, colorize, run_logged_command
+from altbuilder.utils import init_logger, logger, run_logged_command
 
 app = typer.Typer(
     name="clean",
@@ -32,17 +33,14 @@ def clean_cmd(
 
     def suggest_manual_removal(sandbox_path):
         manual_cmd = f"sudo rm -rf {sandbox_path}"
-        typer.echo(
-            colorize(
-                f"Permission issue detected. Please remove the sandbox manually: \n\t {manual_cmd}",
-                color="yellow",
-            )
+        rich_print(
+            f"[yellow]Permission issue detected. Please remove the sandbox manually: \n\t {manual_cmd}[/yellow]"
         )
 
     if all:
         logger.info("Cleaning all sandboxes")
         if not os.path.exists(environment_dir):
-            typer.echo(colorize("No sandboxes to clean.", color="yellow"))
+            rich_print("[yellow]No sandboxes to clean.[/yellow]")
             logger.info("No sandboxes found")
             return
         sandboxes = [
@@ -61,7 +59,7 @@ def clean_cmd(
                     if os.path.exists(sandbox_path):
                         suggest_manual_removal(sandbox_path)
                         raise OSError(f"Failed to remove directory {sandbox_path}")
-                    typer.echo(colorize(f"Sandbox {sandbox_name} cleaned.", color="green"))
+                    rich_print(f"[green]Sandbox {sandbox_name} cleaned.[/green]")
                     logger.info(f"Cleaned sandbox {sandbox_name}")
                 else:
                     cmd = ["hsh", "--cleanup-only", sandbox_path + "/hasher"]
@@ -70,19 +68,16 @@ def clean_cmd(
                     if os.path.exists(sandbox_path):
                         suggest_manual_removal(sandbox_path)
                         raise OSError(f"Failed to remove directory {sandbox_path}")
-                    typer.echo(colorize(f"Sandbox {sandbox_name} cleaned.", color="green"))
+                    rich_print(f"[green]Sandbox {sandbox_name} cleaned.[/green]")
                     logger.info(f"Cleaned sandbox {sandbox_name}")
             except (subprocess.CalledProcessError, OSError) as e:
-                typer.echo(colorize(f"Error cleaning {sandbox_name}: {e}", color="red"))
+                rich_print(f"[red]Error cleaning {sandbox_name}: {e}[/red]")
                 logger.error(f"Failed to clean sandbox {sandbox_name}: {e}")
                 suggest_manual_removal(sandbox_path)
                 failed.append(sandbox_name)
         if failed:
-            typer.echo(
-                colorize(
-                    f"Failed to clean {len(failed)} sandboxes: {', '.join(failed)}",
-                    color="red",
-                )
+            rich_print(
+                f"[red]Failed to clean {len(failed)} sandboxes: {', '.join(failed)}[/red]"
             )
             logger.error(f"Failed sandboxes: {', '.join(failed)}")
         else:
@@ -95,11 +90,8 @@ def clean_cmd(
         try:
             if not env.exists():
                 if env.is_partially_initialized():
-                    typer.echo(
-                        colorize(
-                            f"Sandbox {sandbox_name} exists but is not fully initialized. Cleaning ...",
-                            color="yellow",
-                        )
+                    rich_print(
+                        f"[yellow]Sandbox {sandbox_name} exists but is not fully initialized. Cleaning ...[/yellow]"
                     )
                     logger.info(
                         f"Removing partially initialized sandbox {sandbox_name}"
@@ -110,27 +102,21 @@ def clean_cmd(
                         raise OSError(
                             f"Failed to remove directory {env.environment_dir}"
                         )
-                    typer.echo(
-                        colorize(f"Sandbox {sandbox_name} cleaned.", color="green")
-                    )
+                    rich_print(f"[green]Sandbox {sandbox_name} cleaned.[/green]")
                     logger.info(f"Cleaned sandbox {sandbox_name}")
                     return
-                typer.echo(
-                    colorize(f"Sandbox {sandbox_name} does not exist.", color="red")
-                )
+                rich_print(f"[red]Sandbox {sandbox_name} does not exist.[/red]")
                 return
             env.clean()
-            typer.echo(colorize(f"Sandbox {sandbox_name} cleaned.", color="green"))
+            rich_print(f"[green]Sandbox {sandbox_name} cleaned.[/green]")
             logger.info(f"Cleaned sandbox {sandbox_name}")
         except (subprocess.CalledProcessError, EnvironmentError, OSError) as e:
-            typer.echo(colorize(f"Error: {e}", color="red"))
+            rich_print(f"[red]Error: {e}[/red]")
             logger.error(f"Failed to clean sandbox {sandbox_name}: {e}")
             suggest_manual_removal(env.environment_dir)
             raise typer.Exit(code=1)
     else:
-        typer.echo(
-            colorize("Please specify a sandbox to clean or use --all.", color="red")
-        )
+        rich_print("[red]Please specify a sandbox to clean or use --all.[/red]")
 
 if __name__ == "__main__":
     app()

@@ -1,10 +1,11 @@
 import os
 import subprocess
 import typer
+from rich import print as rich_print
 
 from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.environment import Environment
-from altbuilder.utils import colorize, init_logger, logger
+from altbuilder.utils import init_logger, logger
 
 app = typer.Typer(name="copy-pyproject-deps", help="Copy pyproject_deps.json from sandbox to .gear/ directory.")
 
@@ -83,11 +84,8 @@ def copy_pyproject_deps(
                 logger.info(
                     f"pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}"
                 )
-                typer.echo(
-                    colorize(
-                        f"pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}",
-                        color="green",
-                    )
+                rich_print(
+                    f"[green]pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}[/green]"
                 )
             elif typer.confirm(
                 f"Commit changes to pyproject_deps.json with message '{commit_message}'?",
@@ -97,11 +95,8 @@ def copy_pyproject_deps(
                 logger.info(
                     f"pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}"
                 )
-                typer.echo(
-                    colorize(
-                        f"pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}",
-                        color="green",
-                    )
+                rich_print(
+                    f"[green]pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}[/green]"
                 )
             else:
                 logger.info(
@@ -115,9 +110,8 @@ def copy_pyproject_deps(
                     SourceX: %pyproject_deps_config_name
                     """
                 )
-                typer.echo(
-                    colorize(
-                        f"""pyproject_deps.json added to git index but not committed in sandbox {sandbox_name}.
+                rich_print(
+                    f"""[yellow]pyproject_deps.json added to git index but not committed in sandbox {sandbox_name}.
                         Don't forget to add this line to your .gear/rules file:
 
                         copy: .gear/pyproject_deps.json
@@ -125,26 +119,19 @@ def copy_pyproject_deps(
                         And this to your .spec:
 
                         SourceX: %pyproject_deps_config_name
-                        """,
-                        color="yellow",
-                    )
+                        [/yellow]"""
                 )
         else:
             logger.info(f"pyproject_deps.json is unchanged in sandbox {sandbox_name}, no commit needed")
-            typer.echo(
-                colorize(
-                    f"pyproject_deps.json is unchanged in sandbox {sandbox_name}, no commit needed",
-                    color="yellow",
-                )
+            rich_print(
+                f"[yellow]pyproject_deps.json is unchanged in sandbox {sandbox_name}, no commit needed[/yellow]"
             )
 
-        typer.echo(colorize(f"pyproject_deps.json copied to .gear/", color="green"))
+        rich_print("[green]pyproject_deps.json copied to .gear/[/green]")
         logger.info(f"pyproject_deps.json copied to .gear/ in sandbox {sandbox_name}")
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to copy or stage pyproject_deps.json: {e}")
-        typer.echo(
-            colorize(f"Failed to copy or stage pyproject_deps.json: {e}", color="red")
-        )
+        rich_print(f"[red]Failed to copy or stage pyproject_deps.json: {e}[/red]")
         raise typer.Exit(code=1)
 
 

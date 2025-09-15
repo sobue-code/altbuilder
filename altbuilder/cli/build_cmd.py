@@ -1,11 +1,12 @@
 import os
 
 import typer
+from rich import print as rich_print
 
 from altbuilder.config import load_config
 from altbuilder.core.build_manager import BuildManager
 from altbuilder.exceptions import ToolError
-from altbuilder.utils import colorize, get_spec_metadata, init_logger
+from altbuilder.utils import get_spec_metadata, init_logger
 from altbuilder.utils.setup_sandbox import setup_sandbox
 
 app = typer.Typer(
@@ -71,12 +72,7 @@ def build_cmd(
     # Set up sandbox environment
     env = setup_sandbox(sandbox, branch, arch, reinit, config, task_id=task)
     if env is None:
-        typer.echo(
-            colorize(
-                "Error: Failed to initialize sandbox.",
-                color="red",
-            )
-        )
+        rich_print("[red]Error: Failed to initialize sandbox.[/red]")
         raise typer.Exit(code=1)
 
     # Get package metadata
@@ -91,11 +87,8 @@ def build_cmd(
         release = "unknown"
 
     # Log package metadata
-    typer.echo(
-        colorize(
-            f"Building {package_name} (Version: {version}, Release: {release}) in sandbox: {env.name}",
-            bold=True,
-        )
+    rich_print(
+        f"[bold]Building {package_name} (Version: {version}, Release: {release}) in sandbox: {env.name}[/bold]"
     )
     log_dir = os.path.join(config["build_logs_dir"], env.name, package_name)
 
@@ -123,14 +116,11 @@ def build_cmd(
             hsh_extra=hsh_extra,
             rpmbuild_extra=rpmbuild_extra,
         )
-        typer.echo(colorize(f"Build completed in sandbox {env.name}.", color="green"))
-        typer.echo(colorize(f"Build logs available at: {built_log_dir}", color="cyan"))
+        rich_print(f"[green]Build completed in sandbox {env.name}.[/green]")
+        rich_print(f"[cyan]Build logs available at: {built_log_dir}[/cyan]")
     except ToolError as e:
-        typer.echo(
-            colorize(
-                f"Error building package {package_name}: {str(e)}. Logs available at: {built_log_dir}",
-                color="red",
-            )
+        rich_print(
+            f"[red]Error building package {package_name}: {str(e)}. Logs available at: {built_log_dir}[/red]"
         )
         raise typer.Exit(code=1)
 

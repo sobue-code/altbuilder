@@ -5,7 +5,8 @@ import subprocess
 
 from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.environment import Environment
-from altbuilder.utils import colorize, init_logger
+from altbuilder.utils import init_logger
+from rich import print as rich_print
 
 app = typer.Typer()
 
@@ -25,11 +26,8 @@ def run_cmd(
     ),
 ):
     if not command:
-        typer.echo(
-            colorize(
-                "Error: No command provided. Usage: altbuilder run -s SANDBOX -- COMMAND",
-                color="red",
-            )
+        rich_print(
+            "[red]Error: No command provided. Usage: altbuilder run -s SANDBOX -- COMMAND[/red]"
         )
         raise typer.Exit(code=1)
 
@@ -43,7 +41,7 @@ def run_cmd(
 
     env = Environment(sandbox_name, sandbox_config)
     if not env.exists():
-        typer.echo(colorize(f"Sandbox {sandbox_name} does not exist.", color="red"))
+        rich_print(f"[red]Sandbox {sandbox_name} does not exist.[/red]")
         raise typer.Exit(code=1)
 
     try:

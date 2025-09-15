@@ -4,10 +4,11 @@ import subprocess
 
 import tomli_w
 import typer
+from rich import print as rich_print
 
 from altbuilder.config import USER_CONFIG_DIR, USER_CONFIG_FILE, load_config
 from altbuilder.exceptions import ConfigError
-from altbuilder.utils import colorize, logger
+from altbuilder.utils import logger
 
 app = typer.Typer(
     name="config",
@@ -16,17 +17,17 @@ app = typer.Typer(
 
 
 def display_config(config):
-    """Display the configuration in a clean, colorized format."""
+    """Display the configuration in a clean, highlighted format."""
     output = []
 
     # Header
     config_file = config.get("config_file", str(USER_CONFIG_FILE))
-    output.append(colorize(f"altbuilder Configuration", bold=True, color="cyan"))
-    output.append(colorize(f"File: {config_file}", color="green"))
+    output.append("[bold cyan]altbuilder Configuration[/bold cyan]")
+    output.append(f"[green]File: {config_file}[/green]")
     output.append("")
 
     # Global Settings
-    output.append(colorize("Global Settings:", bold=True, color="yellow"))
+    output.append("[bold yellow]Global Settings:[/bold yellow]")
     global_keys = [
         "branch",
         "arch",
@@ -41,42 +42,35 @@ def display_config(config):
     for key in global_keys:
         if key in config:
             output.append(
-                f"  {colorize(key.capitalize(), color='cyan')}: "
-                f"{colorize(str(config[key]), color='white')}"
+                f"  [cyan]{key.capitalize()}[/cyan]: [white]{config[key]}[/white]"
             )
 
     # Logging Settings
     output.append("")
-    output.append(colorize("Logging:", bold=True, color="yellow"))
+    output.append("[bold yellow]Logging:[/bold yellow]")
     if "logging" in config:
         logging = config["logging"]
         for key in ["level", "file_level", "rotation", "format"]:
             if key in logging:
                 output.append(
-                    f"  {colorize(key.capitalize(), color='cyan')}: "
-                    f"{colorize(str(logging[key]), color='white')}"
+                    f"  [cyan]{key.capitalize()}[/cyan]: [white]{logging[key]}[/white]"
                 )
 
     # Sandboxes
     if config.get("sandboxes"):
         output.append("")
-        output.append(colorize("Sandboxes:", bold=True, color="yellow"))
+        output.append("[bold yellow]Sandboxes:[/bold yellow]")
         for sandbox, settings in config["sandboxes"].items():
-            output.append(f"  {colorize(sandbox, color='cyan', bold=True)}:")
+            output.append(f"  [bold cyan]{sandbox}[/bold cyan]:")
             for key, value in settings.items():
                 output.append(
-                    f"    {colorize(key.capitalize(), color='cyan')}: "
-                    f"{colorize(str(value), color='white')}"
+                    f"    [cyan]{key.capitalize()}[/cyan]: [white]{value}[/white]"
                 )
 
     # Footer with usage hint
     output.append("")
     output.append(
-        colorize(
-            "Tip: Use 'altbuilder config --edit' to modify or "
-            "'altbuilder config --init' to generate a new config.",
-            color="green",
-        )
+        "[green]Tip: Use 'altbuilder config --edit' to modify or 'altbuilder config --init' to generate a new config.[/green]"
     )
 
     return "\n".join(output)
@@ -178,22 +172,15 @@ def config_cmd(
     # Handle --init
     if init:
         if USER_CONFIG_FILE.exists() and not force:
-            typer.echo(
-                colorize(
-                    f"Config file already exists at {USER_CONFIG_FILE}. "
-                    "Use --force to overwrite.",
-                    color="yellow",
-                )
+            rich_print(
+                f"[yellow]Config file already exists at {USER_CONFIG_FILE}. Use --force to overwrite.[/yellow]"
             )
             raise typer.Abort()
 
         initialized = ensure_config_file(force=force)
         if initialized:
-            typer.echo(
-                colorize(
-                    f"Generated user-specific config at {USER_CONFIG_FILE}",
-                    color="green",
-                )
+            rich_print(
+                f"[green]Generated user-specific config at {USER_CONFIG_FILE}[/green]"
             )
         return
 
@@ -201,7 +188,7 @@ def config_cmd(
     try:
         config = load_config()
     except ConfigError as e:
-        typer.echo(colorize(f"Error loading config: {e}", color="red"))
+        rich_print(f"[red]Error loading config: {e}[/red]")
         raise typer.Abort()
 
     # Handle --edit
@@ -209,43 +196,27 @@ def config_cmd(
         # Ensure config file exists
         initialized = ensure_config_file()
         if initialized:
-            typer.echo(
-                colorize(
-                    f"Created user-specific config at {USER_CONFIG_FILE}",
-                    color="green",
-                )
+            rich_print(
+                f"[green]Created user-specific config at {USER_CONFIG_FILE}[/green]"
             )
 
         # Determine editor
         editor = os.environ.get("EDITOR", "vim")
         try:
             subprocess.run([editor, str(USER_CONFIG_FILE)], check=True)
-            typer.echo(
-                colorize(
-                    f"Opened {USER_CONFIG_FILE} in {editor}",
-                    color="green",
-                )
-            )
+            rich_print(f"[green]Opened {USER_CONFIG_FILE} in {editor}[/green]")
             return
         except FileNotFoundError:
-            typer.echo(
-                colorize(
-                    f"Editor '{editor}' not found. Please set $EDITOR or install {editor}.",
-                    color="red",
-                )
+            rich_print(
+                f"[red]Editor '{editor}' not found. Please set $EDITOR or install {editor}.[/red]"
             )
             raise typer.Abort()
         except subprocess.CalledProcessError as e:
-            typer.echo(
-                colorize(
-                    f"Failed to open editor: {e}",
-                    color="red",
-                )
-            )
+            rich_print(f"[red]Failed to open editor: {e}[/red]")
             raise typer.Abort()
 
     # Default action: Display configuration
-    typer.echo(display_config(config))
+    rich_print(display_config(config))
 
 
 if __name__ == "__main__":

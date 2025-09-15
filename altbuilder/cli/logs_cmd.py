@@ -13,7 +13,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from altbuilder.config import load_config
-from altbuilder.utils import colorize, init_logger, logger, open_with_file_manager
+from altbuilder.utils import init_logger, logger, open_with_file_manager
 
 app = typer.Typer(
     name="logs",
@@ -214,18 +214,19 @@ def get_spec_path(log_path, package):
 
 
 def display_spec_diff(build1, build2):
-    """Display colorized diff between two spec files using colorize."""
+    """Display highlighted diff between two spec files using rich."""
+    console = Console()
     spec1_path = get_spec_path(build1["log_path"], build1["package"])
     spec2_path = get_spec_path(build2["log_path"], build2["package"])
 
     if not spec1_path:
-        typer.echo(
-            colorize(f"No spec file found for build {build1['build_dir']}", color="red")
+        console.print(
+            f"No spec file found for build {build1['build_dir']}", style="red"
         )
         return
     if not spec2_path:
-        typer.echo(
-            colorize(f"No spec file found for build {build2['build_dir']}", color="red")
+        console.print(
+            f"No spec file found for build {build2['build_dir']}", style="red"
         )
         return
 
@@ -243,15 +244,15 @@ def display_spec_diff(build1, build2):
     for line in diff:
         line = line.rstrip("\n")
         if line.startswith("---") or line.startswith("+++"):
-            typer.echo(colorize(line, color="yellow"))
+            console.print(line, style="yellow", markup=False)
         elif line.startswith("@@"):
-            typer.echo(colorize(line, color="cyan"))
+            console.print(line, style="cyan", markup=False)
         elif line.startswith("-"):
-            typer.echo(colorize(line, color="red"))
+            console.print(line, style="red", markup=False)
         elif line.startswith("+"):
-            typer.echo(colorize(line, color="green"))
+            console.print(line, style="green", markup=False)
         else:
-            typer.echo(line)
+            console.print(line, markup=False)
 
 
 def get_build_by_id(builds, id_str):
@@ -266,8 +267,9 @@ def get_build_by_id(builds, id_str):
         if 1 <= idx <= len(builds):
             return builds[idx - 1]
         else:
-            typer.echo(
-                colorize(f"Index {idx} out of range (1-{len(builds)}).", color="red")
+            console = Console()
+            console.print(
+                f"Index {idx} out of range (1-{len(builds)}).", style="red"
             )
             return None
     except ValueError:
@@ -275,7 +277,8 @@ def get_build_by_id(builds, id_str):
         for build in builds:
             if build["build_dir"] == id_str:
                 return build
-        typer.echo(colorize(f"Build directory '{id_str}' not found.", color="red"))
+        console = Console()
+        console.print(f"Build directory '{id_str}' not found.", style="red")
         return None
 
 
@@ -337,38 +340,34 @@ def logs_cmd(
     # Handle --clean option
     if clean:
         if not os.path.exists(log_dir):
-            typer.echo(
-                colorize(f"Log directory {log_dir} does not exist.", color="yellow")
-            )
+            console.print(f"Log directory {log_dir} does not exist.", style="yellow")
             logger.info(f"No logs found at {log_dir}")
             return
-        if typer.confirm(
-            colorize(f"Are you sure you want to remove logs at {log_dir}?", color="red")
-        ):
+        if typer.confirm(f"Are you sure you want to remove logs at {log_dir}?"):
             try:
                 shutil.rmtree(log_dir, ignore_errors=True)
-                typer.echo(
-                    colorize(f"Logs at {log_dir} removed successfully.", color="green")
+                console.print(
+                    f"Logs at {log_dir} removed successfully.", style="green"
                 )
                 logger.info(f"Removed logs at {log_dir}")
             except OSError as e:
-                typer.echo(
-                    colorize(f"Error removing logs at {log_dir}: {e}", color="red")
+                console.print(
+                    f"Error removing logs at {log_dir}: {e}", style="red"
                 )
                 logger.error(f"Failed to remove logs at {log_dir}: {e}")
             return
 
     # Handle log viewing (default behavior)
     if not os.path.exists(log_dir):
-        typer.echo(colorize(f"Log directory {log_dir} does not exist.", color="red"))
+        console.print(f"Log directory {log_dir} does not exist.", style="red")
         logger.info(f"No logs found at {log_dir}")
         return
 
     # If -f is used, open the log directory with specified or default file manager
     if f:
         open_with_file_manager(log_dir, file_manager)
-        typer.echo(
-            colorize(f"Opened log directory {log_dir} in file manager.", color="green")
+        console.print(
+            f"Opened log directory {log_dir} in file manager.", style="green"
         )
         logger.info(f"Opened log directory {log_dir} in file manager")
         return
@@ -376,19 +375,15 @@ def logs_cmd(
     # Collect and display build logs
     builds = collect_build_logs(config["build_logs_dir"], sandbox, package)
     if not builds:
-        typer.echo(
-            colorize("No build logs found matching the criteria.", color="yellow")
-        )
+        console.print("No build logs found matching the criteria.", style="yellow")
         logger.info("No build logs found.")
         return
 
     if diff_spec:
         if not package:
-            typer.echo(
-                colorize(
-                    "Error: --diff-spec requires --package to be specified.",
-                    color="red",
-                )
+            console.print(
+                "Error: --diff-spec requires --package to be specified.",
+                style="red",
             )
             return
 
@@ -396,11 +391,9 @@ def logs_cmd(
         if diff_ids is None or len(diff_ids) == 0:
             # Default: compare last two builds
             if len(builds) < 2:
-                typer.echo(
-                    colorize(
-                        "Error: At least two builds are required to compare spec files.",
-                        color="red",
-                    )
+                console.print(
+                    "Error: At least two builds are required to compare spec files.",
+                    style="red",
                 )
                 logger.info("Insufficient builds for spec diff.")
                 return
@@ -413,20 +406,15 @@ def logs_cmd(
             if not build1 or not build2:
                 return
         else:
-            typer.echo(
-                colorize(
-                    "Error: --diff-spec with IDs expects exactly two arguments.",
-                    color="red",
-                )
+            console.print(
+                "Error: --diff-spec with IDs expects exactly two arguments.",
+                style="red",
             )
             return
 
-        typer.echo(
-            colorize(
-                f"Comparing spec files (older to newer): {build1['build_dir']} to {build2['build_dir']}",
-                bold=True,
-                color="cyan",
-            )
+        console.print(
+            f"Comparing spec files (older to newer): {build1['build_dir']} to {build2['build_dir']}",
+            style="bold cyan",
         )
         display_spec_diff(build1, build2)
         return

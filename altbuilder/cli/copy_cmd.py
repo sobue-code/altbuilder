@@ -1,10 +1,11 @@
 from typing import Optional
 
 import typer
+from rich import print as rich_print
 
 from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.environment import Environment
-from altbuilder.utils import colorize, init_logger
+from altbuilder.utils import init_logger
 
 app = typer.Typer(help="Copy files or directories between host and sandbox.")
 copy_app = typer.Typer(help="Copy commands group.")
@@ -19,11 +20,8 @@ def get_env(sandbox: Optional[str]) -> Environment:
     init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
     env = Environment(sandbox_name, sandbox_config)
     if not env.exists():
-        typer.echo(
-            colorize(
-                f"Sandbox {sandbox_name} does not exist. Please initialize it first.",
-                color="red",
-            )
+        rich_print(
+            f"[red]Sandbox {sandbox_name} does not exist. Please initialize it first.[/red]"
         )
         raise typer.Exit(code=1)
     return env
@@ -48,14 +46,11 @@ def copy_to_sandbox(
     env = get_env(sandbox)
     try:
         env.copy_to(host_path, sandbox_path)
-        typer.echo(
-            colorize(
-                f"Copied {host_path} to {sandbox_path} in sandbox {env.name}",
-                color="green",
-            )
+        rich_print(
+            f"[green]Copied {host_path} to {sandbox_path} in sandbox {env.name}[/green]"
         )
     except EnvironmentError as e:
-        typer.echo(colorize(f"Error: {e}", color="red"))
+        rich_print(f"[red]Error: {e}[/red]")
         raise typer.Exit(code=1)
 
 
@@ -76,14 +71,11 @@ def copy_from_sandbox(
     env = get_env(sandbox)
     try:
         env.copy_from(sandbox_path, host_path)
-        typer.echo(
-            colorize(
-                f"Copied {sandbox_path} from sandbox {env.name} to {host_path}",
-                color="green",
-            )
+        rich_print(
+            f"[green]Copied {sandbox_path} from sandbox {env.name} to {host_path}[/green]"
         )
     except EnvironmentError as e:
-        typer.echo(colorize(f"Error: {e}", color="red"))
+        rich_print(f"[red]Error: {e}[/red]")
         raise typer.Exit(code=1)
 
 

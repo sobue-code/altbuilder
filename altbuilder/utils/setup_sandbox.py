@@ -1,8 +1,8 @@
 import click
+from rich import print as rich_print
 from ..config import get_sandbox_config
 from ..core.environment import Environment
 from .logger import init_logger, logger
-from .colorize import colorize
 from .get_sandbox_info import get_sandbox_info
 from .check_task_info import fetch_task_info
 
@@ -41,12 +41,7 @@ def setup_sandbox(sandbox, branch, arch, reinit, config, task_id=None):
 
     # Validate branch and arch for initialization
     if not branch or not arch:
-        raise click.ClickException(
-            colorize(
-                "Error: --branch and --arch are required for initialization.",
-                color="red",
-            )
-        )
+        raise click.ClickException("--branch and --arch are required for initialization.")
     # Validate task_id if provided
     if resolved_task_id:
         task_info = fetch_task_info(resolved_task_id, config["rdb_url"])
@@ -55,11 +50,8 @@ def setup_sandbox(sandbox, branch, arch, reinit, config, task_id=None):
             f"Task {resolved_task_id} branch: {task_branch}, expected branch: {branch.lower()}"
         )
         if task_branch != branch.lower():
-            click.echo(
-                colorize(
-                    f"Warning: Task {resolved_task_id} branch does not match sandbox branch {branch}.",
-                    color="yellow",
-                )
+            rich_print(
+                f"[yellow]Warning: Task {resolved_task_id} branch does not match sandbox branch {branch}.[/yellow]"
             )
             return None
 
@@ -71,31 +63,19 @@ def setup_sandbox(sandbox, branch, arch, reinit, config, task_id=None):
     # Handle sandbox initialization or reinitialization
     if env.exists():
         if reinit:
-            reinit_info_str = colorize(
-                f"Reinitializing sandbox: {sandbox_name} [{branch}-{arch}", bold=True
-            )
-            reinit_info_str += colorize(f" {task_id if task_id else '\b'}]", bold=True)
-            click.echo(reinit_info_str)
+            reinit_info_str = f"[bold]Reinitializing sandbox: {sandbox_name} [{branch}-{arch}"
+            reinit_info_str += f" {task_id if task_id else '\b'}]"
+            rich_print(reinit_info_str + "[/bold]")
             env.clean()
             env.init()
-            click.echo(
-                colorize(
-                    f"Sandbox {sandbox_name} reinitialized successfully.", color="green"
-                )
-            )
+            rich_print(f"[green]Sandbox {sandbox_name} reinitialized successfully.[/green]")
         else:
-            click.echo(
-                colorize(f"Sandbox {sandbox_name} already exists.", color="yellow")
-            )
+            rich_print(f"[yellow]Sandbox {sandbox_name} already exists.[/yellow]")
     else:
-        init_info_str = colorize(
-            f"Initializing sandbox: {sandbox_name} [{branch}-{arch}", bold=True
-        )
-        init_info_str += colorize(f" {task_id if task_id else '\b'}]")
-        click.echo(init_info_str)
+        init_info_str = f"[bold]Initializing sandbox: {sandbox_name} [{branch}-{arch}"
+        init_info_str += f" {task_id if task_id else '\b'}]"
+        rich_print(init_info_str + "[/bold]")
         env.init()
-        click.echo(
-            colorize(f"Sandbox {sandbox_name} initialized successfully.", color="green")
-        )
+        rich_print(f"[green]Sandbox {sandbox_name} initialized successfully.[/green]")
 
     return env

@@ -3,9 +3,10 @@ import subprocess
 import tempfile
 
 import typer
+from rich import print as rich_print
 
 from altbuilder.config import load_config
-from altbuilder.utils import colorize, init_logger, logger
+from altbuilder.utils import init_logger, logger
 
 app = typer.Typer(
     name="update-submodules",
@@ -33,7 +34,7 @@ def update_submodules(
         )
     except subprocess.CalledProcessError:
         logger.error(f"There is no such git object: {tag}")
-        typer.echo(colorize(f"There is no such git object: {tag}", color="red"))
+        rich_print(f"[red]There is no such git object: {tag}[/red]")
         raise typer.Exit(code=1)
 
     # Check for uncommitted changes
@@ -42,7 +43,7 @@ def update_submodules(
         or subprocess.call(["git", "diff", "--cached", "--quiet"]) != 0
     ):
         logger.error("There are uncommitted changes, exiting")
-        typer.echo(colorize("There are uncommitted changes, exiting", color="red"))
+        rich_print("[red]There are uncommitted changes, exiting[/red]")
         raise typer.Exit(code=1)
 
     # Get upstream URL
@@ -54,7 +55,7 @@ def update_submodules(
         )
     except subprocess.CalledProcessError:
         logger.error("Please set 'upstream' repo url")
-        typer.echo(colorize("Please set 'upstream' repo url", color="red"))
+        rich_print("[red]Please set 'upstream' repo url[/red]")
         raise typer.Exit(code=1)
 
     logger.info(f"Using upstream URL: {upstream_url}")
@@ -76,7 +77,7 @@ def update_submodules(
             "Already on branch: alt_submodules, please switch manually to target branch"
         )
         logger.error(msg)
-        typer.echo(colorize(msg, color="red"))
+        rich_print(f"[red]{msg}[/red]")
         raise typer.Exit(code=1)
 
     # Switch/create alt_submodules branch
@@ -145,18 +146,15 @@ def update_submodules(
         subprocess.run(["git", "commit", "--quiet", "-m", commit_msg], check=True)
     else:
         logger.info("Submodules were not changed")
-        typer.echo(colorize("Submodules were not changed", color="yellow"))
+        rich_print("[yellow]Submodules were not changed[/yellow]")
 
     # Switch back & merge alt_submodules branch
     if current_branch:
         subprocess.run(["git", "switch", "--quiet", current_branch], check=True)
     else:
         logger.warning("Current branch is detached HEAD, skipping switch back.")
-        typer.echo(
-            colorize(
-                "Warning: Current branch is detached HEAD, skipping switch back.",
-                color="yellow",
-            )
+        rich_print(
+            "[yellow]Warning: Current branch is detached HEAD, skipping switch back.[/yellow]"
         )
 
     subprocess.run(
@@ -176,15 +174,15 @@ def update_submodules(
         subprocess.run(["rm", "-rf", modules_dir], check=True)
 
     # Instructions
-    typer.echo(colorize("\n******** How to apply ********", color="yellow"))
+    rich_print("[yellow]\n******** How to apply ********[/yellow]")
     typer.echo(
         "Add 'tar: alt_submodules:modules name=modules base=.' to your gear rules"
     )
     typer.echo("Add 'SourceX: modules.tar' and '%setup -aX' to your RPM specfile")
-    typer.echo(colorize("\n******** REMINDER ********", color="yellow"))
+    rich_print("[yellow]\n******** REMINDER ********[/yellow]")
     typer.echo("Don't forget to update tags, e.g. by running `gear-store-tags -ac`")
     logger.info("Submodules update completed successfully")
-    typer.echo(colorize("Submodules updated successfully.", color="green"))
+    rich_print("[green]Submodules updated successfully.[/green]")
 
 
 if __name__ == "__main__":

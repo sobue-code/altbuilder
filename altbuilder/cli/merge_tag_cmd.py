@@ -2,8 +2,7 @@ import subprocess
 from typing import List, Optional
 
 import typer
-
-from altbuilder.utils import colorize
+from rich import print as rich_print
 
 app = typer.Typer(
     name="merge-tag",
@@ -70,11 +69,8 @@ def merge_tag(
         subprocess.run(["git", "diff", "--quiet"], check=True)
         subprocess.run(["git", "diff", "--cached", "--quiet"], check=True)
     except subprocess.CalledProcessError:
-        typer.echo(
-            colorize(
-                "Error: Working directory is not clean. Please commit or stash changes first.",
-                color="red",
-            )
+        rich_print(
+            "[red]Error: Working directory is not clean. Please commit or stash changes first.[/red]"
         )
         raise typer.Exit(code=1)
 
@@ -144,11 +140,8 @@ def merge_tag(
         text=True,
     ).stdout
     if still_unmerged.strip():
-        typer.echo(
-            colorize(
-                "Error: Some conflicts could not be resolved automatically. Resolve manually.",
-                color="red",
-            )
+        rich_print(
+            "[red]Error: Some conflicts could not be resolved automatically. Resolve manually.[/red]"
         )
         subprocess.run(["git", "merge", "--abort"])
         raise typer.Exit(code=1)
@@ -167,9 +160,7 @@ def merge_tag(
     # Finalize the merge, disable editor prompt
     exit_code = subprocess.call(["sh", "-c", "EDITOR=true git merge --continue"])
     if exit_code != 0:
-        typer.echo(
-            colorize("Error: Merge continue failed. Check 'git status'.", color="red")
-        )
+        rich_print("[red]Error: Merge continue failed. Check 'git status'.[/red]")
         raise typer.Exit(code=1)
 
     # Verify if differences outside excluded paths exist
@@ -185,19 +176,12 @@ def merge_tag(
     ).stdout
 
     if diff_output.strip():
-        typer.echo(
-            colorize(
-                "Warning: Diff is not empty! There are unexpected differences outside excluded paths:",
-                color="yellow",
-            )
+        rich_print(
+            "[yellow]Warning: Diff is not empty! There are unexpected differences outside excluded paths:[/yellow]"
         )
-        typer.echo(diff_output)
+        rich_print(diff_output)
     else:
-        typer.echo(
-            colorize(
-                "Success: No differences outside excluded directories.", color="green"
-            )
-        )
+        rich_print("[green]Success: No differences outside excluded directories.[/green]")
 
 
 if __name__ == "__main__":

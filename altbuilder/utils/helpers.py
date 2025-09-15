@@ -3,6 +3,7 @@ import platform
 import subprocess
 import shutil
 import shlex
+from rich import print as rich_print
 from .logger import logger, cmd_logger
 
 
@@ -104,18 +105,14 @@ def open_with_file_manager(path, file_manager=None):
             file_manager = None
 
     if not file_manager:
-        click.echo(
-            colorize("No file manager (mc or ranger) found in PATH.", color="red")
-        )
+        rich_print("[red]No file manager (mc or ranger) found in PATH.[/red]")
         return
 
     cmd = [file_manager, path]
     try:
         subprocess.run(cmd, check=True)
     except Exception as e:
-        click.echo(
-            colorize(f"Failed to open {path} with {file_manager}: {e}", color="red")
-        )
+        rich_print(f"[red]Failed to open {path} with {file_manager}: {e}[/red]")
 
 
 def get_spec_metadata(build_target, is_src_rpm):

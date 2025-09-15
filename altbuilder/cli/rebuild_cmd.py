@@ -1,13 +1,14 @@
 import os
 
 import typer
+from rich import print as rich_print
 
 from altbuilder.adapters.hasher import HasherAdapter
 from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.build_manager import BuildManager
 from altbuilder.core.environment import Environment
 from altbuilder.core.remote import RemoteRepository
-from altbuilder.utils import colorize, get_spec_metadata, init_logger, logger
+from altbuilder.utils import get_spec_metadata, init_logger, logger
 
 app = typer.Typer(
     name="rebuild",
@@ -43,7 +44,7 @@ def rebuild_cmd(
     try:
         config = load_config()
     except Exception as e:
-        typer.echo(colorize(f"Failed to load configuration: {e}", color="red"))
+        rich_print(f"[red]Failed to load configuration: {e}")
         raise typer.Exit(code=1)
 
     sandbox_name = (
@@ -52,36 +53,24 @@ def rebuild_cmd(
     try:
         sandbox_config = get_sandbox_config(sandbox_name, config)
     except Exception as e:
-        typer.echo(
-            colorize(
-                f"Failed to get sandbox configuration for {sandbox_name}: {e}",
-                color="red",
-            )
-        )
+        rich_print(f"[red]Failed to get sandbox configuration for {sandbox_name}: {e}")
         raise typer.Exit(code=1)
 
     # Logging
     try:
         init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
     except Exception as e:
-        typer.echo(colorize(f"Failed to initialize logger: {e}", color="red"))
+        rich_print(f"[red]Failed to initialize logger: {e}")
         raise typer.Exit(code=1)
 
     env = Environment(sandbox_name, sandbox_config)
     if not env.exists():
-        typer.echo(
-            colorize(
-                f"Sandbox {sandbox_name} does not exist. Please initialize it first.",
-                color="red",
-            )
-        )
+        rich_print(f"[red]Sandbox {sandbox_name} does not exist.[/red]")
         raise typer.Exit(code=1)
 
     mirror, branch = sandbox_config.get("mirror"), sandbox_config.get("branch")
     if not mirror or not branch:
-        typer.echo(
-            colorize("Mirror or branch not specified in configuration.", color="red")
-        )
+        rich_print("[red]Mirror or branch not specified in configuration.[/red]")
         raise typer.Exit(code=1)
 
     temp_file, src_rpm_path = None, None
@@ -94,11 +83,8 @@ def rebuild_cmd(
             package_name, mirror, branch
         )
         if not src_rpm_url_or_path or not src_rpm_filename:
-            typer.echo(
-                colorize(
-                    f"No matching src.rpm found for {package_name} in {mirror} (branch: {branch})",
-                    color="red",
-                )
+            rich_print(
+                f"[red]No matching src.rpm found for {package_name} in {mirror} (branch: {branch})[/red]"
             )
             raise typer.Exit(code=1)
 
@@ -111,7 +97,7 @@ def rebuild_cmd(
             )
             src_rpm_path = temp_file
         else:
-            typer.echo(colorize(f"Unsupported mirror type: {mirror}", color="red"))
+            rich_print(f"[red]Unsupported mirror type: {mirror}[/red]")
             raise typer.Exit(code=1)
 
         # Metadata
@@ -123,11 +109,8 @@ def rebuild_cmd(
         logger.info(
             f"Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}"
         )
-        typer.echo(
-            colorize(
-                f"Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}",
-                bold=True,
-            )
+        rich_print(
+            f"[bold]Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}[/bold]"
         )
 
         # Build log dir
@@ -154,26 +137,20 @@ def rebuild_cmd(
             command="rebuild",
         )
 
-        typer.echo(
-            colorize(
-                f"Successfully rebuilt {meta_name} (Version: {version}, Release: {release}) (sandbox: {sandbox_name}).",
-                color="green",
-            )
+        rich_print(
+            f"[green]Successfully rebuilt {meta_name} (Version: {version}, Release: {release}) (sandbox: {sandbox_name}).[/green]"
         )
 
     except Exception as e:
-        typer.echo(colorize(f"Failed to rebuild {package_name}: {e}", color="red"))
+        rich_print(f"[red]Failed to rebuild {package_name}: {e}[/red]")
         raise typer.Exit(code=1)
     finally:
         if temp_file and os.path.exists(temp_file):
             try:
                 os.remove(temp_file)
             except OSError as e:
-                typer.echo(
-                    colorize(
-                        f"Warning: Failed to remove temporary file {temp_file}: {e}",
-                        color="yellow",
-                    )
+                rich_print(
+                    f"[yellow]Warning: Failed to remove temporary file {temp_file}: {e}[/yellow]"
                 )
 
 

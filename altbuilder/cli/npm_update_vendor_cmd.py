@@ -2,10 +2,11 @@ import os
 import subprocess
 
 import typer
+from rich import print as rich_print
 
 from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.environment import Environment
-from altbuilder.utils import colorize, init_logger, logger
+from altbuilder.utils import init_logger, logger
 from altbuilder.utils.metrics import Metrics
 
 app = typer.Typer(
@@ -129,11 +130,8 @@ def npm_update_vendor(
         )
 
         if diff_result.returncode == 0:
-            typer.echo(
-                colorize(
-                    "NPM vendor dependencies are already up to date. Nothing to commit.",
-                    color="yellow",
-                )
+            rich_print(
+                "[yellow]NPM vendor dependencies are already up to date. Nothing to commit.[/yellow]"
             )
             logger.info("NPM vendor dependencies up to date, no commit created.")
         else:
@@ -144,9 +142,8 @@ def npm_update_vendor(
             )
             subprocess.run(["git", "commit", "-m", commit_message], check=True)
 
-            typer.echo(
-                colorize(
-                    f"""NPM vendor dependencies updated and committed successfully.
+            rich_print(
+                f"""[green]NPM vendor dependencies updated and committed successfully.
 Don't forget to add the following line to your .gear/rules:
 
 tar: node_modules name=node_modules
@@ -155,25 +152,18 @@ And this to your .spec:
 
 SourceX: node_modules.tar
 
-%setup -a X
-""",
-                    color="green",
-                )
+%setup -a X[/green]"""
             )
             logger.info(
                 f"NPM vendor dependencies updated and committed in sandbox {sandbox_name}"
             )
     except EnvironmentError as e:
         logger.error(f"Failed to update NPM vendor dependencies: {e}")
-        typer.echo(
-            colorize(f"Failed to update NPM vendor dependencies: {e}", color="red")
-        )
+        rich_print(f"[red]Failed to update NPM vendor dependencies: {e}[/red]")
         raise typer.Exit(code=1)
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to commit NPM vendor dependencies: {e}")
-        typer.echo(
-            colorize(f"Failed to commit NPM vendor dependencies: {e}", color="red")
-        )
+        rich_print(f"[red]Failed to commit NPM vendor dependencies: {e}[/red]")
         raise typer.Exit(code=1)
 
 

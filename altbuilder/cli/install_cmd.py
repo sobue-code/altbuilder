@@ -1,8 +1,9 @@
 import typer
+from rich import print as rich_print
 
 from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.environment import Environment
-from altbuilder.utils import colorize, init_logger
+from altbuilder.utils import init_logger
 
 app = typer.Typer(
     name="install",
@@ -34,16 +35,14 @@ def install_cmd(
     # Setup environment
     env = Environment(sandbox_name, sandbox_config)
     if not env.exists():
-        typer.echo(colorize(f"Sandbox {sandbox_name} does not exist.", color="red"))
+        rich_print(f"[red]Sandbox {sandbox_name} does not exist.[/red]")
         raise typer.Exit(code=1)
 
     if packages:
-        typer.echo(
-            colorize(f"Installing packages in sandbox: {sandbox_name}", bold=True)
-        )
+        rich_print(f"[bold]Installing packages in sandbox: {sandbox_name}[/bold]")
         env.install(packages)
     else:
-        typer.echo(colorize("No packages specified for installation.", color="yellow"))
+        rich_print("[yellow]No packages specified for installation.[/yellow]")
 
 
 if __name__ == "__main__":

@@ -1,8 +1,9 @@
 import typer
+from rich import print as rich_print
 
 from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.environment import Environment
-from altbuilder.utils import colorize, init_logger
+from altbuilder.utils import init_logger
 
 app = typer.Typer(
     name="shell",
@@ -44,15 +45,15 @@ def shell_cmd(
     # Setup environment
     env = Environment(sandbox_name, sandbox_config)
     if not env.exists():
-        typer.echo(colorize(f"Sandbox {sandbox_name} does not exist.", color="red"))
+        rich_print(f"[red]Sandbox {sandbox_name} does not exist.[/red]")
         raise typer.Exit(code=1)
 
-    typer.echo(colorize(f"Entering shell for sandbox: {sandbox_name}", bold=True))
+    rich_print(f"[bold]Entering shell for sandbox: {sandbox_name}[/bold]")
 
     try:
         env.shell(root, internet)
     except EnvironmentError as e:
-        typer.echo(colorize(f"Error: {e}", color="red"))
+        rich_print(f"[red]Error: {e}[/red]")
         raise typer.Exit(code=1)
 
 

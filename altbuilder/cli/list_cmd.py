@@ -8,7 +8,7 @@ from rich.text import Text
 from rich.tree import Tree
 
 from altbuilder.config import load_config
-from altbuilder.utils import colorize, logger, open_with_file_manager, read_sandbox_info
+from altbuilder.utils import logger, open_with_file_manager, read_sandbox_info
 
 app = typer.Typer(
     name="list",
@@ -42,7 +42,7 @@ def list_cmd(
     sandbox = sandbox or ctx.obj.get("sandbox")
 
     if not os.path.exists(environment_dir):
-        console.print(colorize("No sandboxes found.", color="yellow"))
+        console.print("[yellow]No sandboxes found.[/yellow]")
         logger.info("No sandboxes found")
         return
 
@@ -54,13 +54,13 @@ def list_cmd(
 
     if sandbox:
         if sandbox not in sandboxes:
-            console.print(colorize(f"Sandbox '{sandbox}' not found.", color="red"))
+            console.print(f"[red]Sandbox '{sandbox}' not found.[/red]")
             logger.info(f"Sandbox '{sandbox}' not found")
             return
         sandboxes = [sandbox]
 
     if not sandboxes:
-        console.print(colorize("No sandboxes found.", color="yellow"))
+        console.print("[yellow]No sandboxes found.[/yellow]")
         logger.info("No sandboxes found")
         return
 
@@ -70,13 +70,13 @@ def list_cmd(
     for sandbox_name in sorted(sandboxes):
         sandbox_path = os.path.join(environment_dir, sandbox_name)
         info = read_sandbox_info(sandbox_path)
-        branch = info.get("branch", colorize("<unknown>", color="red"))
-        arch = info.get("arch", colorize("<unknown>", color="red"))
+        branch = info.get("branch", "[red]<unknown>[/red]")
+        arch = info.get("arch", "[red]<unknown>[/red]")
         task_id = info.get("task_id", None)
 
         # Handle task_id safely
         task_id_str = f", {task_id}" if task_id and task_id != "<unknown>" else ""
-        sandbox_label = f"[cyan]📍 {sandbox_name}[/] " f"[{branch}-{arch}{task_id_str}]"
+        sandbox_label = f"[cyan]📍 {sandbox_name}[/] " + f"\\[{branch}-{arch}{task_id_str}\\]"
         sandbox_node = sandbox_tree.add(sandbox_label)
 
         # If --sandbox is specified, show RPM details

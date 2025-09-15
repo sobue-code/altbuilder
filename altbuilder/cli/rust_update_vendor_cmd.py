@@ -2,10 +2,11 @@ import os
 import subprocess
 
 import typer
+from rich import print as rich_print
 
 from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.environment import Environment
-from altbuilder.utils import colorize, init_logger, logger
+from altbuilder.utils import init_logger, logger
 from altbuilder.utils.metrics import Metrics
 
 app = typer.Typer(
@@ -122,11 +123,8 @@ def rust_update_vendor(
         )
 
         if diff_result.returncode == 0:
-            typer.echo(
-                colorize(
-                    "Rust vendor dependencies are already up to date. Nothing to commit.",
-                    color="yellow",
-                )
+            rich_print(
+                "[yellow]Rust vendor dependencies are already up to date. Nothing to commit.[/yellow]"
             )
             logger.info("Rust vendor dependencies up to date, no commit created.")
         else:
@@ -137,9 +135,8 @@ def rust_update_vendor(
             )
             subprocess.run(["git", "commit", "-m", commit_message], check=True)
 
-            typer.echo(
-                colorize(
-                    f"""Rust vendor dependencies updated and committed successfully.
+            rich_print(
+                f"""[green]Rust vendor dependencies updated and committed successfully.
 Don't forget to add the following line to your .gear/rules file:
 
 tar: vendor name=vendor
@@ -148,25 +145,18 @@ And this to your .spec:
 
 SourceX: vendor.tar
 
-%setup -a X
-""",
-                    color="green",
-                )
+%setup -a X[/green]"""
             )
             logger.info(
                 f"Rust vendor dependencies updated and committed in sandbox {sandbox_name}"
             )
     except EnvironmentError as e:
         logger.error(f"Failed to update Rust vendor dependencies: {e}")
-        typer.echo(
-            colorize(f"Failed to update Rust vendor dependencies: {e}", color="red")
-        )
+        rich_print(f"[red]Failed to update Rust vendor dependencies: {e}[/red]")
         raise typer.Exit(code=1)
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to commit Rust vendor dependencies: {e}")
-        typer.echo(
-            colorize(f"Failed to commit Rust vendor dependencies: {e}", color="red")
-        )
+        rich_print(f"[red]Failed to commit Rust vendor dependencies: {e}[/red]")
         raise typer.Exit(code=1)
 
 
