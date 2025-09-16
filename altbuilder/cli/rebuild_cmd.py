@@ -28,6 +28,18 @@ def rebuild_cmd(
         "-s",
         help="Sandbox name (e.g., Sisyphus-x86_64). Defaults to <branch>-<arch> from config.",
     ),
+    branch: str = typer.Option(
+        None,
+        "--branch",
+        "-b",
+        help="Branch name (e.g., Sisyphus). Overrides config when initializing sandbox.",
+    ),
+    arch: str = typer.Option(
+        None,
+        "--arch",
+        "-a",
+        help="Architecture (e.g., x86_64). Overrides config when initializing sandbox.",
+    ),
     no_check: bool = typer.Option(
         False,
         "--no-check",
@@ -47,11 +59,13 @@ def rebuild_cmd(
         rich_print(f"[red]Failed to load configuration: {e}")
         raise typer.Exit(code=1)
 
-    sandbox_name = (
-        sandbox or f"{config.get('branch', 'Sisyphus')}-{config.get('arch', 'x86_64')}"
-    )
+    branch_default = branch or config.get("branch", "Sisyphus")
+    arch_default = arch or config.get("arch", "x86_64")
+    sandbox_name = sandbox or f"{branch_default}-{arch_default}"
     try:
-        sandbox_config = get_sandbox_config(sandbox_name, config)
+        sandbox_config = get_sandbox_config(
+            sandbox_name, config, branch=branch, arch=arch
+        )
     except Exception as e:
         rich_print(f"[red]Failed to get sandbox configuration for {sandbox_name}: {e}")
         raise typer.Exit(code=1)
@@ -65,8 +79,16 @@ def rebuild_cmd(
 
     env = Environment(sandbox_name, sandbox_config)
     if not env.exists():
-        rich_print(f"[red]Sandbox {sandbox_name} does not exist.[/red]")
-        raise typer.Exit(code=1)
+        rich_print(
+            f"[yellow]Sandbox {sandbox_name} does not exist. Initializing automatically.[/yellow]"
+        )
+        try:
+            env.init()
+        except Exception as e:
+            rich_print(
+                f"[red]Failed to initialize sandbox {sandbox_name}: {e}[/red]"
+            )
+            raise typer.Exit(code=1)
 
     mirror, branch = sandbox_config.get("mirror"), sandbox_config.get("branch")
     if not mirror or not branch:
