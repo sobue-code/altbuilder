@@ -2,7 +2,6 @@ import os
 import shutil
 import shlex
 from datetime import datetime
-from ..exceptions import BuildError
 from ..utils.logger import logger
 from ..utils.metrics import Metrics
 from ..utils.helpers import get_spec_metadata, copy_spec_to_log_dir
