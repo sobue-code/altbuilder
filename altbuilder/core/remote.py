@@ -267,17 +267,15 @@ class RemoteRepository:
             RemoteError: If the mirror URL is invalid or unsupported.
         """
         logger.info(f"Building repository URL for branch {branch} with mirror {mirror}")
+        branch_lower = branch.lower()
+
         if mirror.startswith("file:"):
             local_path = mirror[5:]
-            if branch.lower() == "sisyphus":
-                return os.path.join(
-                    local_path, branch.lower(), "last", "files", "SRPMS"
-                )
-            raise RemoteError(f"Unsupported branch for local mirror: {branch}")
+            return os.path.join(local_path, branch_lower, "last", "files", "SRPMS")
         elif mirror.startswith("http"):
-            if branch.lower() == "sisyphus":
+            if branch_lower == "sisyphus":
                 return f"{mirror}/ALTLinux/{branch}/files/SRPMS/"
-            return f"{mirror}/ALTLinux/{branch}/branch/SRPMS/"
+            return f"{mirror}/ALTLinux/{branch}/branch/files/SRPMS/"
         else:
             raise RemoteError(f"Invalid mirror type: {mirror}")
 
@@ -307,17 +305,23 @@ class RemoteRepository:
             rf"^{re.escape(package_name)}-[0-9][0-9a-zA-Z._%+-]+-[0-9a-zA-Z._%+-]+\.src\.rpm$"
         )
 
-        if repo_url.startswith("file:"):
+        if mirror.startswith("file:"):
+            local_repo_path = repo_url
             try:
-                files = os.listdir(repo_url)
+                files = os.listdir(local_repo_path)
                 matching_files = sorted([f for f in files if pattern.match(f)])
                 if not matching_files:
-                    logger.warning(f"No src.rpm found for {package_name} in {repo_url}")
+                    logger.warning(
+                        f"No src.rpm found for {package_name} in {local_repo_path}"
+                    )
                     return None, None
-                return os.path.join(repo_url, matching_files[-1]), matching_files[-1]
+                return (
+                    os.path.join(local_repo_path, matching_files[-1]),
+                    matching_files[-1],
+                )
             except (FileNotFoundError, PermissionError) as e:
-                logger.error(f"Failed to access local repository {repo_url}: {e}")
-                raise RemoteError(f"Failed to access local repository {repo_url}: {e}")
+                logger.error(f"Failed to access local repository {local_repo_path}: {e}")
+                raise RemoteError(f"Failed to access local repository {local_repo_path}: {e}")
 
         try:
             response = requests.get(repo_url, timeout=10)
