@@ -70,13 +70,32 @@ def list_cmd(
     for sandbox_name in sorted(sandboxes):
         sandbox_path = os.path.join(environment_dir, sandbox_name)
         info = read_sandbox_info(sandbox_path)
-        branch = info.get("branch", "[red]<unknown>[/red]")
-        arch = info.get("arch", "[red]<unknown>[/red]")
-        task_id = info.get("task_id", None)
+        branch_value = info.get("branch")
+        arch_value = info.get("arch")
+        task_id = info.get("task_id")
 
-        # Handle task_id safely
-        task_id_str = f", {task_id}" if task_id and task_id != "<unknown>" else ""
-        sandbox_label = f"[cyan]📍 {sandbox_name}[/] " + f"\\[{branch}-{arch}{task_id_str}\\]"
+        sandbox_label = Text()
+        sandbox_label.append("📍 ", style="cyan")
+        sandbox_label.append(sandbox_name, style="cyan")
+        sandbox_label.append(" [", style="cyan")
+
+        if branch_value:
+            sandbox_label.append(str(branch_value), style="cyan")
+        else:
+            sandbox_label.append("<unknown>", style="red")
+
+        sandbox_label.append("-", style="cyan")
+
+        if arch_value:
+            sandbox_label.append(str(arch_value), style="cyan")
+        else:
+            sandbox_label.append("<unknown>", style="red")
+
+        if task_id not in (None, "<unknown>"):
+            sandbox_label.append(", ", style="cyan")
+            sandbox_label.append(str(task_id), style="cyan")
+
+        sandbox_label.append("]", style="cyan")
         sandbox_node = sandbox_tree.add(sandbox_label)
 
         # If --sandbox is specified, show RPM details

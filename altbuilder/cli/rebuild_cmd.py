@@ -4,11 +4,12 @@ import typer
 from rich import print as rich_print
 
 from altbuilder.adapters.hasher import HasherAdapter
-from altbuilder.config import get_sandbox_config, load_config
+from altbuilder.config import load_config
 from altbuilder.core.build_manager import BuildManager
-from altbuilder.core.environment import Environment
 from altbuilder.core.remote import RemoteRepository
-from altbuilder.utils import get_spec_metadata, init_logger, logger
+from altbuilder.utils import get_spec_metadata, logger
+from altbuilder.utils.check_task_info import fetch_task_info
+from altbuilder.utils.setup_sandbox import derive_sandbox_name, setup_sandbox
 
 app = typer.Typer(
     name="rebuild",
@@ -40,6 +41,18 @@ def rebuild_cmd(
         "-a",
         help="Architecture (e.g., x86_64). Overrides config when initializing sandbox.",
     ),
+    task: int = typer.Option(
+        None,
+        "--task",
+        "-t",
+        help="Attach task repository by ID.",
+    ),
+    reinit: bool = typer.Option(
+        False,
+        "--reinit",
+        "-r",
+        help="Reinitialize the sandbox before rebuilding.",
+    ),
     no_check: bool = typer.Option(
         False,
         "--no-check",
@@ -59,39 +72,59 @@ def rebuild_cmd(
         rich_print(f"[red]Failed to load configuration: {e}")
         raise typer.Exit(code=1)
 
-    branch_default = branch or config.get("branch", "Sisyphus")
-    arch_default = arch or config.get("arch", "x86_64")
-    sandbox_name = sandbox or f"{branch_default}-{arch_default}"
+    task_branch_hint = None
+
+    def resolve_sandbox_name_hint() -> str:
+        nonlocal task_branch_hint
+        if sandbox:
+            return sandbox
+
+        branch_candidate = branch.strip() if branch else None
+        arch_candidate = arch.strip() if arch else None
+
+        if task and not branch_candidate:
+            if task_branch_hint is None:
+                info = fetch_task_info(task, config["rdb_url"])
+                task_branch_hint = (
+                    (info.get("branch") or "").strip() if info else ""
+                )
+            if task_branch_hint:
+                branch_candidate = task_branch_hint
+
+        branch_candidate = branch_candidate or config.get("branch", "Sisyphus")
+        arch_candidate = arch_candidate or config.get("arch", "x86_64")
+
+        return derive_sandbox_name(branch_candidate, arch_candidate, task)
+
     try:
-        sandbox_config = get_sandbox_config(
-            sandbox_name, config, branch=branch, arch=arch
+        env = setup_sandbox(
+            sandbox,
+            branch,
+            arch,
+            reinit,
+            config,
+            task_id=task,
         )
     except Exception as e:
-        rich_print(f"[red]Failed to get sandbox configuration for {sandbox_name}: {e}")
-        raise typer.Exit(code=1)
-
-    # Logging
-    try:
-        init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
-    except Exception as e:
-        rich_print(f"[red]Failed to initialize logger: {e}")
-        raise typer.Exit(code=1)
-
-    env = Environment(sandbox_name, sandbox_config)
-    if not env.exists():
+        resolved_sandbox_name = resolve_sandbox_name_hint()
         rich_print(
-            f"[yellow]Sandbox {sandbox_name} does not exist. Initializing automatically.[/yellow]"
+            f"[red]Failed to set up sandbox {resolved_sandbox_name}: {e}[/red]"
         )
-        try:
-            env.init()
-        except Exception as e:
-            rich_print(
-                f"[red]Failed to initialize sandbox {sandbox_name}: {e}[/red]"
-            )
-            raise typer.Exit(code=1)
+        raise typer.Exit(code=1)
 
-    mirror, branch = sandbox_config.get("mirror"), sandbox_config.get("branch")
-    if not mirror or not branch:
+    if env is None:
+        resolved_sandbox_name = resolve_sandbox_name_hint()
+        rich_print(
+            f"[red]Error: Failed to initialize sandbox {resolved_sandbox_name}.[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    sandbox_name = env.name
+    sandbox_config = env.config
+
+    mirror = sandbox_config.get("mirror")
+    sandbox_branch = sandbox_config.get("branch")
+    if not mirror or not sandbox_branch:
         rich_print("[red]Mirror or branch not specified in configuration.[/red]")
         raise typer.Exit(code=1)
 
@@ -102,11 +135,11 @@ def rebuild_cmd(
 
         # Search for src.rpm using RemoteRepository
         src_rpm_url_or_path, src_rpm_filename = remote_repo.find_src_rpm(
-            package_name, mirror, branch
+            package_name, mirror, sandbox_branch
         )
         if not src_rpm_url_or_path or not src_rpm_filename:
             rich_print(
-                f"[red]No matching src.rpm found for {package_name} in {mirror} (branch: {branch})[/red]"
+                f"[red]No matching src.rpm found for {package_name} in {mirror} (branch: {sandbox_branch})[/red]"
             )
             raise typer.Exit(code=1)
 
