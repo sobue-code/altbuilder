@@ -1,5 +1,6 @@
 from typing import Optional
 import os
+from altbuilder.config.const import SUPPORTED_BRANCHES
 
 
 def generate_sources_list(
@@ -47,7 +48,7 @@ def generate_sources_list(
         lines.append(f"rpm {mirror}/ALTLinux/{branch} noarch classic")
         if arch == "x86_64":
             lines.append(f"rpm {mirror}/ALTLinux/{branch} {arch}-i586 classic")
-    elif branch.startswith("p") and branch[1:].isdigit():
+    elif branch.lower() in SUPPORTED_BRANCHES:
         lines.append(
             f"rpm [{branch}] {mirror}/ALTLinux {branch}/branch/{arch} classic gostcrypto"
         )
