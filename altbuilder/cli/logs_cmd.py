@@ -23,7 +23,10 @@ app = typer.Typer(
 
 
 def collect_build_logs(
-    log_dir: str, sandbox: str = None, package: str = None
+    log_dir: str,
+    sandbox: str = None,
+    package: str = None,
+    rebuild_id: str = None,
 ) -> List[Dict[str, Any]]:
     """Collect and group build logs from build_result.json files."""
     builds = []
@@ -44,6 +47,8 @@ def collect_build_logs(
             with open(os.path.join(root, "build_result.json"), "r") as f:
                 try:
                     build_info = json.load(f)
+                    if rebuild_id and build_info.get("rebuild_id") != rebuild_id:
+                        continue
                     builds.append(
                         {
                             "sandbox": sandbox_name,
@@ -296,6 +301,9 @@ def logs_cmd(
     package: str = typer.Option(
         None, "--package", "-p", help="Filter logs by package name."
     ),
+    rebuild_id: str = typer.Option(
+        None, "--rebuild-id", help="Filter logs by rebuild identifier."
+    ),
     json_output: bool = typer.Option(
         False, "--json-output", "-j", help="Output logs in JSON format instead of tree."
     ),
@@ -332,6 +340,7 @@ def logs_cmd(
     params = {
         "sandbox": sandbox,
         "package": package,
+        "rebuild_id": rebuild_id,
         "json_option": json_output,
         "limit": limit,
         "open": f,
@@ -370,6 +379,107 @@ def logs_cmd(
             else:
                 console.print(message, style="yellow")
             logger.info(f"No logs found at {log_dir}")
+            return
+        if rebuild_id:
+            builds_to_remove = collect_build_logs(
+                config["build_logs_dir"], sandbox, package, rebuild_id
+            )
+            if not builds_to_remove:
+                message = (
+                    "No logs found for rebuild "
+                    f"{rebuild_id} matching the provided filters."
+                )
+                if json_requested:
+                    json_response(
+                        ctx,
+                        "success",
+                        params=params,
+                        message=message,
+                        log_path=log_dir,
+                        removed=[],
+                    )
+                else:
+                    console.print(message, style="yellow")
+                logger.info(
+                    "No logs found for rebuild %s during cleanup", rebuild_id
+                )
+                return
+            confirmed = True
+            if not json_requested:
+                confirmed = typer.confirm(
+                    "Remove logs for rebuild "
+                    f"{rebuild_id}? ({len(builds_to_remove)} build(s))"
+                )
+            if not confirmed:
+                if json_requested:
+                    json_response(
+                        ctx,
+                        "success",
+                        params=params,
+                        message="Log removal cancelled.",
+                        log_path=log_dir,
+                    )
+                return
+            removed_paths: List[str] = []
+            missing_paths: List[str] = []
+            errors: List[Dict[str, str]] = []
+            for build in builds_to_remove:
+                path = build.get("log_path")
+                if not path:
+                    continue
+                if not os.path.exists(path):
+                    missing_paths.append(path)
+                    logger.warning("Log path %s not found during cleanup", path)
+                    continue
+                try:
+                    shutil.rmtree(path)
+                    removed_paths.append(path)
+                    logger.info("Removed logs at %s", path)
+                except OSError as exc:
+                    errors.append({"path": path, "error": str(exc)})
+                    logger.error("Failed to remove logs at %s: %s", path, exc)
+            message_parts: List[str] = []
+            if removed_paths:
+                count = len(removed_paths)
+                word = "directory" if count == 1 else "directories"
+                message_parts.append(
+                    f"Removed {count} log {word} for rebuild {rebuild_id}."
+                )
+            if missing_paths:
+                count = len(missing_paths)
+                word = "directory" if count == 1 else "directories"
+                verb = "was" if count == 1 else "were"
+                message_parts.append(f"{count} log {word} {verb} not found.")
+            if errors:
+                count = len(errors)
+                word = "directory" if count == 1 else "directories"
+                message_parts.append(f"Failed to remove {count} log {word}.")
+            if not message_parts:
+                message_parts.append(
+                    f"No log directories were removed for rebuild {rebuild_id}."
+                )
+            message = " ".join(message_parts)
+            if json_requested:
+                payload: Dict[str, Any] = {
+                    "removed": removed_paths,
+                    "not_found": missing_paths,
+                    "errors": errors,
+                }
+                json_response(
+                    ctx,
+                    "success",
+                    params=params,
+                    message=message,
+                    log_path=log_dir,
+                    **payload,
+                )
+            else:
+                style = "red" if errors else "green" if removed_paths else "yellow"
+                console.print(message, style=style)
+                if errors and not removed_paths:
+                    console.print(
+                        "Some log directories could not be removed.", style="red"
+                    )
             return
         confirmed = True
         if not json_requested:
@@ -451,7 +561,9 @@ def logs_cmd(
         return
 
     # Collect and display build logs
-    builds = collect_build_logs(config["build_logs_dir"], sandbox, package)
+    builds = collect_build_logs(
+        config["build_logs_dir"], sandbox, package, rebuild_id
+    )
     if not builds:
         message = "No build logs found matching the criteria."
         if json_requested:
