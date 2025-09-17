@@ -14,6 +14,7 @@ from rich.tree import Tree
 
 from altbuilder.config import load_config
 from altbuilder.utils import init_logger, logger, open_with_file_manager
+from altbuilder.utils.json_utils import is_json_mode, json_response
 
 app = typer.Typer(
     name="logs",
@@ -268,9 +269,7 @@ def get_build_by_id(builds, id_str):
             return builds[idx - 1]
         else:
             console = Console()
-            console.print(
-                f"Index {idx} out of range (1-{len(builds)}).", style="red"
-            )
+            console.print(f"Index {idx} out of range (1-{len(builds)}).", style="red")
             return None
     except ValueError:
         # Assume directory name
@@ -323,6 +322,19 @@ def logs_cmd(
     ),
 ):
     """Display or manage build logs for sandboxes and packages."""
+    json_requested = is_json_mode(ctx) or json_output
+    params = {
+        "sandbox": sandbox,
+        "package": package,
+        "json_option": json_output,
+        "limit": limit,
+        "open": f,
+        "file_manager": file_manager,
+        "clean": clean,
+        "expand_history": expand_history,
+        "diff_spec": diff_spec,
+        "diff_ids": diff_ids,
+    }
     config = load_config()
     init_logger(config=config)
     console = Console()
@@ -340,43 +352,125 @@ def logs_cmd(
     # Handle --clean option
     if clean:
         if not os.path.exists(log_dir):
-            console.print(f"Log directory {log_dir} does not exist.", style="yellow")
+            message = f"Log directory {log_dir} does not exist."
+            if json_requested:
+                json_response(
+                    ctx,
+                    "success",
+                    params=params,
+                    message=message,
+                    log_path=log_dir,
+                )
+            else:
+                console.print(message, style="yellow")
             logger.info(f"No logs found at {log_dir}")
             return
-        if typer.confirm(f"Are you sure you want to remove logs at {log_dir}?"):
-            try:
-                shutil.rmtree(log_dir, ignore_errors=True)
-                console.print(
-                    f"Logs at {log_dir} removed successfully.", style="green"
+        confirmed = True
+        if not json_requested:
+            confirmed = typer.confirm(
+                f"Are you sure you want to remove logs at {log_dir}?"
+            )
+        if not confirmed:
+            if json_requested:
+                json_response(
+                    ctx,
+                    "success",
+                    params=params,
+                    message="Log removal cancelled.",
+                    log_path=log_dir,
                 )
-                logger.info(f"Removed logs at {log_dir}")
-            except OSError as e:
-                console.print(
-                    f"Error removing logs at {log_dir}: {e}", style="red"
-                )
-                logger.error(f"Failed to remove logs at {log_dir}: {e}")
             return
+        try:
+            shutil.rmtree(log_dir, ignore_errors=True)
+            message = f"Logs at {log_dir} removed successfully."
+            if json_requested:
+                json_response(
+                    ctx,
+                    "success",
+                    params=params,
+                    message=message,
+                    log_path=log_dir,
+                )
+            else:
+                console.print(message, style="green")
+            logger.info(f"Removed logs at {log_dir}")
+        except OSError as e:
+            message = f"Error removing logs at {log_dir}: {e}"
+            if json_requested:
+                json_response(
+                    ctx,
+                    "error",
+                    params=params,
+                    message=message,
+                    log_path=log_dir,
+                    code=1,
+                )
+            else:
+                console.print(message, style="red")
+            logger.error(f"Failed to remove logs at {log_dir}: {e}")
+        return
 
     # Handle log viewing (default behavior)
     if not os.path.exists(log_dir):
-        console.print(f"Log directory {log_dir} does not exist.", style="red")
+        message = f"Log directory {log_dir} does not exist."
+        if json_requested:
+            json_response(
+                ctx,
+                "error",
+                params=params,
+                message=message,
+                log_path=log_dir,
+                code=1,
+            )
+        else:
+            console.print(message, style="red")
         logger.info(f"No logs found at {log_dir}")
         return
 
     # If -f is used, open the log directory with specified or default file manager
     if f:
         open_with_file_manager(log_dir, file_manager)
-        console.print(
-            f"Opened log directory {log_dir} in file manager.", style="green"
-        )
+        message = f"Opened log directory {log_dir} in file manager."
+        if json_requested:
+            json_response(
+                ctx,
+                "success",
+                params=params,
+                message=message,
+                log_path=log_dir,
+            )
+        else:
+            console.print(message, style="green")
         logger.info(f"Opened log directory {log_dir} in file manager")
         return
 
     # Collect and display build logs
     builds = collect_build_logs(config["build_logs_dir"], sandbox, package)
     if not builds:
-        console.print("No build logs found matching the criteria.", style="yellow")
+        message = "No build logs found matching the criteria."
+        if json_requested:
+            json_response(
+                ctx,
+                "success",
+                params=params,
+                message=message,
+                log_path=log_dir,
+                builds=[],
+            )
+        else:
+            console.print(message, style="yellow")
         logger.info("No build logs found.")
+        return
+
+    if json_requested and diff_spec:
+        json_response(
+            ctx,
+            "error",
+            params=params,
+            message="--diff-spec is not supported with JSON output.",
+            log_path=log_dir,
+            code=1,
+        )
         return
 
     if diff_spec:
@@ -419,15 +513,21 @@ def logs_cmd(
         display_spec_diff(build1, build2)
         return
 
-    if json_output:
-        if limit:
-            limited_builds = builds[:limit]
-            typer.echo(json.dumps(limited_builds, indent=2, ensure_ascii=False))
-        else:
-            typer.echo(json.dumps(builds, indent=2, ensure_ascii=False))
+    selected_builds = builds[:limit] if limit else builds
+
+    if json_requested:
+        json_response(
+            ctx,
+            "success",
+            params=params,
+            log_path=log_dir,
+            builds=selected_builds,
+            total=len(builds),
+            returned=len(selected_builds),
+        )
     else:
         if limit:
-            builds = builds[:limit]
+            builds = selected_builds
         format_build_logs(builds, expand_history)
 
 

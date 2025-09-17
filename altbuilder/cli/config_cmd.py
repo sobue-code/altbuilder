@@ -9,6 +9,7 @@ from rich import print as rich_print
 from altbuilder.config import USER_CONFIG_DIR, USER_CONFIG_FILE, load_config
 from altbuilder.exceptions import ConfigError
 from altbuilder.utils import logger
+from altbuilder.utils.json_utils import is_json_mode, json_response
 
 app = typer.Typer(
     name="config",
@@ -169,33 +170,103 @@ def config_cmd(
     Use --edit to open the config file in your default editor.
     Use --init to generate a new config with user-specific defaults.
     """
+    json_mode = is_json_mode(ctx)
+    params = {"edit": edit, "init": init, "force": force}
+    config_path = str(USER_CONFIG_FILE)
+
     # Handle --init
     if init:
         if USER_CONFIG_FILE.exists() and not force:
-            rich_print(
-                f"[yellow]Config file already exists at {USER_CONFIG_FILE}. Use --force to overwrite.[/yellow]"
-            )
+            message = f"Config file already exists at {USER_CONFIG_FILE}. Use --force to overwrite."
+            if json_mode:
+                json_response(
+                    ctx,
+                    "error",
+                    params=params,
+                    message=message,
+                    code=1,
+                    config_path=config_path,
+                )
+                return
+            rich_print(f"[yellow]{message}[/yellow]")
             raise typer.Abort()
 
-        initialized = ensure_config_file(force=force)
-        if initialized:
-            rich_print(
-                f"[green]Generated user-specific config at {USER_CONFIG_FILE}[/green]"
+        try:
+            initialized = ensure_config_file(force=force)
+        except ConfigError as e:
+            message = f"Failed to initialize config: {e}"
+            if json_mode:
+                json_response(
+                    ctx,
+                    "error",
+                    params=params,
+                    message=message,
+                    code=1,
+                    config_path=config_path,
+                )
+                return
+            rich_print(f"[red]{message}[/red]")
+            raise typer.Abort()
+
+        if json_mode:
+            json_response(
+                ctx,
+                "success",
+                params=params,
+                message=(
+                    f"Generated user-specific config at {USER_CONFIG_FILE}"
+                    if initialized
+                    else "Config file already exists."
+                ),
+                config_path=config_path,
             )
+        else:
+            if initialized:
+                rich_print(
+                    f"[green]Generated user-specific config at {USER_CONFIG_FILE}[/green]"
+                )
         return
 
     # Load configuration
     try:
         config = load_config()
     except ConfigError as e:
-        rich_print(f"[red]Error loading config: {e}[/red]")
+        message = f"Error loading config: {e}"
+        if json_mode:
+            json_response(
+                ctx,
+                "error",
+                params=params,
+                message=message,
+                code=1,
+                config_path=config_path,
+            )
+            return
+        rich_print(f"[red]{message}[/red]")
         raise typer.Abort()
 
     # Handle --edit
     if edit:
         # Ensure config file exists
-        initialized = ensure_config_file()
-        if initialized:
+        try:
+            initialized = ensure_config_file()
+        except ConfigError as e:
+            message = f"Failed to ensure config file: {e}"
+            if json_mode:
+                json_response(
+                    ctx,
+                    "error",
+                    params=params,
+                    message=message,
+                    code=1,
+                    config_path=config_path,
+                )
+                return
+            rich_print(f"[red]{message}[/red]")
+            raise typer.Abort()
+
+        created = bool(initialized)
+        if created and not json_mode:
             rich_print(
                 f"[green]Created user-specific config at {USER_CONFIG_FILE}[/green]"
             )
@@ -204,19 +275,68 @@ def config_cmd(
         editor = os.environ.get("EDITOR", "vim")
         try:
             subprocess.run([editor, str(USER_CONFIG_FILE)], check=True)
-            rich_print(f"[green]Opened {USER_CONFIG_FILE} in {editor}[/green]")
+            if json_mode:
+                extra = {"config_path": config_path, "editor": editor}
+                if created:
+                    extra["created"] = True
+                json_response(
+                    ctx,
+                    "success",
+                    params=params,
+                    message=f"Opened {USER_CONFIG_FILE} in {editor}",
+                    **extra,
+                )
+            else:
+                rich_print(f"[green]Opened {USER_CONFIG_FILE} in {editor}[/green]")
             return
         except FileNotFoundError:
-            rich_print(
-                f"[red]Editor '{editor}' not found. Please set $EDITOR or install {editor}.[/red]"
+            message = (
+                f"Editor '{editor}' not found. Please set $EDITOR or install {editor}."
             )
+            if json_mode:
+                extra = {"config_path": config_path, "editor": editor}
+                if created:
+                    extra["created"] = True
+                json_response(
+                    ctx,
+                    "error",
+                    params=params,
+                    message=message,
+                    code=1,
+                    **extra,
+                )
+                return
+            rich_print(f"[red]{message}[/red]")
             raise typer.Abort()
         except subprocess.CalledProcessError as e:
-            rich_print(f"[red]Failed to open editor: {e}[/red]")
+            message = f"Failed to open editor: {e}"
+            if json_mode:
+                extra = {"config_path": config_path, "editor": editor}
+                if created:
+                    extra["created"] = True
+                json_response(
+                    ctx,
+                    "error",
+                    params=params,
+                    message=message,
+                    code=1,
+                    **extra,
+                )
+                return
+            rich_print(f"[red]{message}[/red]")
             raise typer.Abort()
 
     # Default action: Display configuration
-    rich_print(display_config(config))
+    if json_mode:
+        json_response(
+            ctx,
+            "success",
+            params=params,
+            config=config,
+            config_path=config.get("config_file", config_path),
+        )
+    else:
+        rich_print(display_config(config))
 
 
 if __name__ == "__main__":

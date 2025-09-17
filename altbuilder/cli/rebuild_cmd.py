@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 import typer
 from rich import print as rich_print
@@ -9,6 +10,7 @@ from altbuilder.core.build_manager import BuildManager
 from altbuilder.core.remote import RemoteRepository
 from altbuilder.utils import get_spec_metadata, logger
 from altbuilder.utils.check_task_info import fetch_task_info
+from altbuilder.utils.json_utils import is_json_mode, json_response
 from altbuilder.utils.setup_sandbox import derive_sandbox_name, setup_sandbox
 
 app = typer.Typer(
@@ -19,6 +21,7 @@ app = typer.Typer(
 
 @app.command()
 def rebuild_cmd(
+    ctx: typer.Context,
     package_name: str = typer.Argument(
         ...,
         help="Exact package name to rebuild (e.g., python3-module-hypothesis).",
@@ -65,12 +68,39 @@ def rebuild_cmd(
     ),
 ):
     """Rebuild a package by fetching its corresponding src.rpm and building it in sandbox."""
-    # Load config
+    json_mode = is_json_mode(ctx)
+    params = {
+        "package_name": package_name,
+        "sandbox": sandbox,
+        "branch": branch,
+        "arch": arch,
+        "task": task,
+        "reinit": reinit,
+        "no_check": no_check,
+        "rpmbuild_extra": rpmbuild_extra,
+    }
+    log_path = None
+
+    def emit_error(message: str, *, code: int = 1, log: bool = True) -> None:
+        if log:
+            logger.error(message)
+        if json_mode:
+            json_response(
+                ctx,
+                "error",
+                params=params,
+                message=message,
+                log_path=log_path,
+                code=code,
+            )
+        else:
+            rich_print(f"[red]{message}[/red]")
+            raise typer.Exit(code=code)
+
     try:
         config = load_config()
     except Exception as e:
-        rich_print(f"[red]Failed to load configuration: {e}")
-        raise typer.Exit(code=1)
+        emit_error(f"Failed to load configuration: {e}")
 
     task_branch_hint = None
 
@@ -78,22 +108,16 @@ def rebuild_cmd(
         nonlocal task_branch_hint
         if sandbox:
             return sandbox
-
         branch_candidate = branch.strip() if branch else None
         arch_candidate = arch.strip() if arch else None
-
         if task and not branch_candidate:
             if task_branch_hint is None:
                 info = fetch_task_info(task, config["rdb_url"])
-                task_branch_hint = (
-                    (info.get("branch") or "").strip() if info else ""
-                )
+                task_branch_hint = (info.get("branch") or "").strip() if info else ""
             if task_branch_hint:
                 branch_candidate = task_branch_hint
-
         branch_candidate = branch_candidate or config.get("branch", "Sisyphus")
         arch_candidate = arch_candidate or config.get("arch", "x86_64")
-
         return derive_sandbox_name(branch_candidate, arch_candidate, task)
 
     try:
@@ -107,43 +131,36 @@ def rebuild_cmd(
         )
     except Exception as e:
         resolved_sandbox_name = resolve_sandbox_name_hint()
-        rich_print(
-            f"[red]Failed to set up sandbox {resolved_sandbox_name}: {e}[/red]"
-        )
-        raise typer.Exit(code=1)
+        emit_error(f"Failed to set up sandbox {resolved_sandbox_name}: {e}")
 
     if env is None:
         resolved_sandbox_name = resolve_sandbox_name_hint()
-        rich_print(
-            f"[red]Error: Failed to initialize sandbox {resolved_sandbox_name}.[/red]"
-        )
-        raise typer.Exit(code=1)
+        emit_error(f"Error: Failed to initialize sandbox {resolved_sandbox_name}.")
 
     sandbox_name = env.name
     sandbox_config = env.config
+    params["sandbox"] = sandbox_name
 
     mirror = sandbox_config.get("mirror")
     sandbox_branch = sandbox_config.get("branch")
+    if not branch:
+        params["branch"] = sandbox_branch
+    if not arch:
+        params["arch"] = sandbox_config.get("arch")
     if not mirror or not sandbox_branch:
-        rich_print("[red]Mirror or branch not specified in configuration.[/red]")
-        raise typer.Exit(code=1)
+        emit_error("Mirror or branch not specified in configuration.")
 
     temp_file, src_rpm_path = None, None
     try:
-        # Initialize RemoteRepository
         remote_repo = RemoteRepository(config)
-
-        # Search for src.rpm using RemoteRepository
         src_rpm_url_or_path, src_rpm_filename = remote_repo.find_src_rpm(
             package_name, mirror, sandbox_branch
         )
         if not src_rpm_url_or_path or not src_rpm_filename:
-            rich_print(
-                f"[red]No matching src.rpm found for {package_name} in {mirror} (branch: {sandbox_branch})[/red]"
+            emit_error(
+                f"No matching src.rpm found for {package_name} in {mirror} (branch: {sandbox_branch})."
             )
-            raise typer.Exit(code=1)
 
-        # Handle local or remote src.rpm
         if mirror.startswith("file:"):
             src_rpm_path = src_rpm_url_or_path
         elif mirror.startswith("http"):
@@ -152,10 +169,8 @@ def rebuild_cmd(
             )
             src_rpm_path = temp_file
         else:
-            rich_print(f"[red]Unsupported mirror type: {mirror}[/red]")
-            raise typer.Exit(code=1)
+            emit_error(f"Unsupported mirror type: {mirror}")
 
-        # Metadata
         meta_name, version, release = get_spec_metadata(src_rpm_path, is_src_rpm=True)
         if not meta_name:
             meta_name = os.path.basename(src_rpm_path).replace(".src.rpm", "")
@@ -164,11 +179,11 @@ def rebuild_cmd(
         logger.info(
             f"Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}"
         )
-        rich_print(
-            f"[bold]Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}[/bold]"
-        )
+        if not json_mode:
+            rich_print(
+                f"[bold]Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}[/bold]"
+            )
 
-        # Build log dir
         log_dir = os.path.join(
             sandbox_config["build_logs_dir"], sandbox_name, meta_name
         )
@@ -177,6 +192,7 @@ def rebuild_cmd(
             build_number += 1
         build_log_dir = os.path.join(log_dir, f"build_{build_number}")
         os.makedirs(build_log_dir, exist_ok=True)
+        log_path = build_log_dir
 
         hasher = HasherAdapter(base_dir=config.get("base_dir"))
         builder = BuildManager(env, hasher_adapter=hasher)
@@ -192,21 +208,49 @@ def rebuild_cmd(
             command="rebuild",
         )
 
-        rich_print(
-            f"[green]Successfully rebuilt {meta_name} (Version: {version}, Release: {release}) (sandbox: {sandbox_name}).[/green]"
-        )
+        if json_mode:
+            json_response(
+                ctx,
+                "success",
+                params=params,
+                log_path=log_path,
+                package={
+                    "name": meta_name,
+                    "version": version,
+                    "release": release,
+                },
+                sandbox=sandbox_name,
+            )
+            return
+        else:
+            rich_print(
+                f"[green]Successfully rebuilt {meta_name} (Version: {version}, Release: {release}) (sandbox: {sandbox_name}).[/green]"
+            )
 
+    except typer.Exit:
+        raise
     except Exception as e:
-        rich_print(f"[red]Failed to rebuild {package_name}: {e}[/red]")
-        raise typer.Exit(code=1)
+        if isinstance(e, subprocess.CalledProcessError):
+            logger.error(
+                "Command failed (exit %s): %s",
+                getattr(e, "returncode", "unknown"),
+                " ".join(getattr(e, "cmd", [])) if getattr(e, "cmd", None) else str(e),
+            )
+            emit_error(f"Failed to rebuild {package_name}: {e}", log=False)
+        else:
+            logger.error("Unexpected error during rebuild: %s", e)
+            emit_error(f"Failed to rebuild {package_name}: {e}", log=False)
     finally:
         if temp_file and os.path.exists(temp_file):
             try:
                 os.remove(temp_file)
             except OSError as e:
-                rich_print(
-                    f"[yellow]Warning: Failed to remove temporary file {temp_file}: {e}[/yellow]"
+                warning_msg = (
+                    f"Warning: Failed to remove temporary file {temp_file}: {e}"
                 )
+                logger.warning(warning_msg)
+                if not json_mode:
+                    rich_print(f"[yellow]{warning_msg}[/yellow]")
 
 
 if __name__ == "__main__":

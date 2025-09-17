@@ -1,4 +1,5 @@
 import importlib.metadata
+import json
 
 import typer
 
@@ -33,6 +34,7 @@ def get_version() -> str:
         except (FileNotFoundError, KeyError):
             return "unknown"
 
+
 # Add global sandbox option
 @app.callback(invoke_without_command=True)
 def main_callback(
@@ -42,6 +44,12 @@ def main_callback(
         "--sandbox",
         "-s",
         help="Sandbox name (e.g., Sisyphus-x86_64). Defaults to <branch>-<arch> from config.",
+    ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        "-j",
+        help="Enable JSON-formatted output.",
     ),
     version: bool = typer.Option(
         False,
@@ -54,7 +62,21 @@ def main_callback(
     ),
 ):
     """Command-line interface for managing ALT Linux sandboxes."""
+    ctx.ensure_object(dict)
+    ctx.obj["json"] = json_output
+
     if ctx.invoked_subcommand is None and not version:
+        if json_output:
+            typer.echo(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "message": "No command provided.",
+                        "code": 1,
+                    },
+                    ensure_ascii=False,
+                )
+            )
         raise typer.Exit(code=1)
     if not version:
         ctx.obj["sandbox"] = sandbox
