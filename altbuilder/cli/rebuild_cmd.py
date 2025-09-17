@@ -66,6 +66,12 @@ def rebuild_cmd(
         "--rpmbuild-extra",
         help="Extra flags to pass to rpmbuild (via --rpmbuild-args).",
     ),
+    autoclean: bool = typer.Option(
+        False,
+        "--autoclean",
+        "-c",
+        help="Clean sandbox after rebuild.",
+    ),
 ):
     """Rebuild a package by fetching its corresponding src.rpm and building it in sandbox."""
     json_mode = is_json_mode(ctx)
@@ -78,6 +84,7 @@ def rebuild_cmd(
         "reinit": reinit,
         "no_check": no_check,
         "rpmbuild_extra": rpmbuild_extra,
+        "autoclean": autoclean,
     }
     log_path = None
 
@@ -207,6 +214,19 @@ def rebuild_cmd(
             rpmbuild_extra=rpmbuild_extra,
             command="rebuild",
         )
+
+        if autoclean:
+            try:
+                env.clean()
+                logger.info(f"Sandbox {sandbox_name} cleaned after rebuild")
+                if not json_mode:
+                    rich_print(
+                        f"[green]Sandbox {sandbox_name} cleaned after rebuild.[/green]"
+                    )
+            except (subprocess.CalledProcessError, OSError) as e:
+                logger.error(f"Autoclean failed for sandbox {sandbox_name}: {e}")
+                if not json_mode:
+                    rich_print(f"[red]Autoclean failed for {sandbox_name}: {e}[/red]")
 
         if json_mode:
             json_response(
