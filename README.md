@@ -77,6 +77,8 @@ altbuilder list
 altbuilder rebuild package-name
 # optionally target a specific sandbox:
 altbuilder rebuild --task 123456 package-name
+# tag the rebuild with an identifier for tracking in logs:
+altbuilder rebuild --rebuild-id 2024-07-01a package-name
 ```
 
 4. **Inspect logs**:
@@ -160,7 +162,11 @@ Fetch a package’s `src.rpm` from repositories and rebuild it inside the sandbo
 ```bash
 altbuilder rebuild package-name
 altbuilder --sandbox Sisyphus-x86_64 rebuild package-name
+altbuilder rebuild --rebuild-id nightly-42 package-name
 ```
+
+Use `--rebuild-id` to attach a unique string to the rebuild. The identifier is stored
+alongside build metadata and shown in `altbuilder logs` output.
 
 ### `logs`
 
@@ -187,6 +193,12 @@ altbuilder rebuild python3-module-foo
 
 ```bash
 altbuilder --sandbox p11-x86_64 rebuild python3-module-foo
+```
+
+**Rebuild with an explicit identifier to track iterations:**
+
+```bash
+altbuilder rebuild --rebuild-id test-run-001 python3-module-foo
 ```
 
 **Watch task status and stop if needed:**

@@ -28,6 +28,7 @@ class BuildManager:
         hsh_extra="",
         rpmbuild_extra="",
         command="build",
+        rebuild_id=None,
     ):
         """Build a package with the specified parameters."""
         if not self.environment.exists():
@@ -87,6 +88,7 @@ class BuildManager:
             command=command,
             version=version,
             release=release,
+            rebuild_id=rebuild_id,
         ):
             if is_src_rpm:
                 extra_args = shlex.split(hsh_extra) if hsh_extra else []
@@ -108,6 +110,7 @@ class BuildManager:
                     extra_args=extra_args,
                     sandbox_name=self.environment.name,
                     package_name=package_name,
+                    rebuild_id=rebuild_id,
                 )
             else:
                 hasher_args = [

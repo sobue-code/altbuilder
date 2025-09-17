@@ -50,6 +50,11 @@ def rebuild_cmd(
         "-t",
         help="Attach task repository by ID.",
     ),
+    rebuild_id: str = typer.Option(
+        None,
+        "--rebuild-id",
+        help="Unique identifier for the rebuild operation.",
+    ),
     reinit: bool = typer.Option(
         False,
         "--reinit",
@@ -81,6 +86,7 @@ def rebuild_cmd(
         "branch": branch,
         "arch": arch,
         "task": task,
+        "rebuild_id": rebuild_id,
         "reinit": reinit,
         "no_check": no_check,
         "rpmbuild_extra": rpmbuild_extra,
@@ -183,13 +189,14 @@ def rebuild_cmd(
             meta_name = os.path.basename(src_rpm_path).replace(".src.rpm", "")
             version, release = "unknown", "unknown"
 
-        logger.info(
-            f"Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}"
+        rebuild_suffix = f" [rebuild id: {rebuild_id}]" if rebuild_id else ""
+        rebuild_message = (
+            f"Rebuilding package: {meta_name} (Version: {version}, Release: {release}) "
+            f"in sandbox: {sandbox_name}{rebuild_suffix}"
         )
+        logger.info(rebuild_message)
         if not json_mode:
-            rich_print(
-                f"[bold]Rebuilding package: {meta_name} (Version: {version}, Release: {release}) in sandbox: {sandbox_name}[/bold]"
-            )
+            rich_print(f"[bold]{rebuild_message}[/bold]")
 
         log_dir = os.path.join(
             sandbox_config["build_logs_dir"], sandbox_name, meta_name
@@ -213,6 +220,7 @@ def rebuild_cmd(
             hsh_extra="",
             rpmbuild_extra=rpmbuild_extra,
             command="rebuild",
+            rebuild_id=rebuild_id,
         )
 
         if autoclean:
@@ -240,12 +248,15 @@ def rebuild_cmd(
                     "release": release,
                 },
                 sandbox=sandbox_name,
+                rebuild_id=rebuild_id,
             )
             return
         else:
-            rich_print(
-                f"[green]Successfully rebuilt {meta_name} (Version: {version}, Release: {release}) (sandbox: {sandbox_name}).[/green]"
+            success_message = (
+                f"Successfully rebuilt {meta_name} (Version: {version}, Release: {release}) "
+                f"(sandbox: {sandbox_name}){rebuild_suffix}."
             )
+            rich_print(f"[green]{success_message}[/green]")
 
     except typer.Exit:
         raise

@@ -22,21 +22,8 @@ class Metrics:
             return False
 
     @contextmanager
-    def track_build(
-        self,
-        package_name,
-        build_log_dir=None,
-        sandbox_name=None,
-        command="build",
-        version=None,
-        release=None,
-        rebuild_id=None,
-    ):
-        """Track a package build process, saving temporary and result JSON files.
-
-        Optionally attach a ``rebuild_id`` so downstream consumers can correlate
-        rebuild attempts.
-        """
+    def track_build(self, package_name, build_log_dir=None, sandbox_name=None, command="build", version=None, release=None):
+        """Track a package build process, saving temporary and result JSON files."""
         if not self.base_dir:
             raise ValueError("base_dir is required for tracking builds")
 
@@ -74,7 +61,6 @@ class Metrics:
             "start_time": start_time,
             "pid": os.getpid(),
             "sandbox_name": sandbox_name or "unknown",
-            "rebuild_id": rebuild_id,
         }
 
         with open(temp_json_path, "w") as f:
@@ -92,7 +78,6 @@ class Metrics:
                 "sandbox_name": sandbox_name or "unknown",
                 "version": version or "unknown",
                 "release": release or "unknown",
-                "rebuild_id": rebuild_id,
             }
             with open(temp_result_path, "w") as f:
                 json.dump(temp_result, f, indent=2)
@@ -120,7 +105,6 @@ class Metrics:
                     "sandbox_name": sandbox_name or "unknown",
                     "version": version or "unknown",
                     "release": release or "unknown",
-                    "rebuild_id": rebuild_id,
                 }
                 os.makedirs(build_log_dir, exist_ok=True)
                 result_json_path = os.path.join(build_log_dir, "build_result.json")
@@ -133,12 +117,7 @@ class Metrics:
 
     @contextmanager
     def track_command(
-        self,
-        command,
-        package_name=None,
-        log_dir=None,
-        sandbox_name=None,
-        rebuild_id=None,
+        self, command, package_name=None, log_dir=None, sandbox_name=None
     ):
         """Track execution of any command, saving temporary and result JSON files."""
         if not self.base_dir:
@@ -177,7 +156,6 @@ class Metrics:
             "start_time": start_time,
             "pid": os.getpid(),
             "sandbox_name": sandbox_name or "unknown",
-            "rebuild_id": rebuild_id,
         }
 
         with open(temp_json_path, "w") as f:
@@ -193,7 +171,6 @@ class Metrics:
                 "success": False,
                 "end_time": None,
                 "sandbox_name": sandbox_name or "unknown",
-                "rebuild_id": rebuild_id,
             }
             with open(temp_result_path, "w") as f:
                 json.dump(temp_result, f, indent=2)
@@ -219,7 +196,6 @@ class Metrics:
                     "success": success,
                     "end_time": datetime.now().isoformat(),
                     "sandbox_name": sandbox_name or "unknown",
-                    "rebuild_id": rebuild_id,
                 }
                 os.makedirs(log_dir, exist_ok=True)
                 result_json_path = os.path.join(log_dir, "command_result.json")

@@ -12,7 +12,15 @@ class HasherAdapter(ToolAdapter):
         self.metrics = Metrics(base_dir=base_dir)
         self.base_dir = base_dir
 
-    def run_command(self, cmd, log_file=None, sandbox_dir=None, sandbox_name=None, package_name=None):
+    def run_command(
+        self,
+        cmd,
+        log_file=None,
+        sandbox_dir=None,
+        sandbox_name=None,
+        package_name=None,
+        rebuild_id=None,
+    ):
         """Run a hasher command with metrics tracking."""
         if not self.base_dir:
             raise ValueError("base_dir is required for command tracking")
@@ -24,6 +32,7 @@ class HasherAdapter(ToolAdapter):
             log_dir=os.path.dirname(log_file) if log_file else None,
             sandbox_name=sandbox_name,
             package_name=package_name,
+            rebuild_id=rebuild_id,
         ):
             logger.info(f"Executing: {command_str}")
             return run_logged_command(
@@ -60,6 +69,7 @@ class HasherAdapter(ToolAdapter):
         log_file=None,
         extra_args=None,
         sandbox_name=None,
+        rebuild_id=None,
     ):
         """Build a package from source with metrics tracking."""
         cmd = [
@@ -79,6 +89,7 @@ class HasherAdapter(ToolAdapter):
             log_file=log_file,
             sandbox_dir=os.path.dirname(workdir),
             sandbox_name=sandbox_name,
+            rebuild_id=rebuild_id,
         )
 
     def build_from_srpm(
@@ -91,6 +102,7 @@ class HasherAdapter(ToolAdapter):
         extra_args=None,
         sandbox_name=None,
         package_name=None,
+        rebuild_id=None,
     ):
         """Build a package from an SRPM with metrics tracking."""
         cmd = [
@@ -113,6 +125,7 @@ class HasherAdapter(ToolAdapter):
             sandbox_dir=os.path.dirname(workdir),
             sandbox_name=sandbox_name,
             package_name=package_name,
+            rebuild_id=rebuild_id,
         )
 
     def shell(self, workdir, root=False, internet=False):

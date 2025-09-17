@@ -56,6 +56,7 @@ def collect_build_logs(
                             "command": build_info.get("command", "N/A"),
                             "build_dir": build_dir,
                             "log_path": root,
+                            "rebuild_id": build_info.get("rebuild_id"),
                         }
                     )
                 except json.JSONDecodeError:
@@ -151,11 +152,14 @@ def format_build_logs(
                 status_text = (
                     "[green]Success[/]" if latest_build["success"] else "[red]Failed[/]"
                 )
+                rebuild_id = latest_build.get("rebuild_id")
                 version_label = (
                     f"[yellow]{version}-{release}[/] "
                     f"({len(builds_list)} builds: {status_text}, "
                     f"{latest_build['duration']:.2f}s, {start_time})"
                 )
+                if rebuild_id:
+                    version_label += f" [id: {rebuild_id}]"
                 version_node = package_node.add(version_label)
 
                 # Expand history if requested
@@ -175,6 +179,8 @@ def format_build_logs(
                             f"Build: {build_status}, {build['duration']:.2f}s, "
                             f"{build_time}, {build['build_dir']}"
                         )
+                        if build.get("rebuild_id"):
+                            build_label += f", id: {build['rebuild_id']}"
                         version_node.add(build_label)
 
                 # Add history summary
