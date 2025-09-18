@@ -1,3 +1,4 @@
+import getpass
 import os
 from pathlib import Path
 import tomli
@@ -32,19 +33,41 @@ def load_config(config_file=None):
             logger.error(f"Failed to load default config: {e}")
             raise ConfigError(f"Cannot load default config: {e}")
 
+    try:
+        current_user = getpass.getuser()
+    except Exception:
+        current_user = Path.home().name
+
+    def _replace_user_placeholder(value):
+        if isinstance(value, str) and "<user>" in value:
+            return value.replace("<user>", current_user)
+        return value
+
+    def _resolve_path(value, default):
+        resolved = _replace_user_placeholder(value if value is not None else default)
+        if isinstance(resolved, str):
+            resolved = os.path.expanduser(resolved)
+            resolved = os.path.expandvars(resolved)
+        return resolved
+
     # Validate and set defaults
-    config.setdefault("base_dir", str(USER_CONFIG_DIR))
-    config.setdefault(
-        "environment_dir",
-        config.get("environment_dir", os.path.join(config["base_dir"], "environments")),
+    config["base_dir"] = _resolve_path(config.get("base_dir"), str(USER_CONFIG_DIR))
+    config["environment_dir"] = _resolve_path(
+        config.get("environment_dir"),
+        os.path.join(config["base_dir"], "environments"),
     )
-    config.setdefault("build_logs_dir", os.path.join(config["base_dir"], "builds"))
+    config["build_logs_dir"] = _resolve_path(
+        config.get("build_logs_dir"),
+        os.path.join(config["base_dir"], "builds"),
+    )
     config.setdefault("branch", "Sisyphus")
     config.setdefault("arch", "x86_64")
     config.setdefault("mirror", "http://ftp.altlinux.org/pub/distributions")
     config.setdefault("mirror_task", "http://git.altlinux.org")
     config.setdefault("rdb_url", "https://rdb.altlinux.org")
-    config.setdefault("packager", f"{os.getlogin()} <{os.getlogin()}@altlinux.org>")
+    default_packager = f"{current_user} <{current_user}@altlinux.org>"
+    config.setdefault("packager", default_packager)
+    config["packager"] = _replace_user_placeholder(config["packager"])
     config.setdefault(
         "logging",
         {
