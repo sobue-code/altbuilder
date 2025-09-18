@@ -404,22 +404,6 @@ def logs_cmd(
                     "No logs found for rebuild %s during cleanup", rebuild_id
                 )
                 return
-            confirmed = True
-            if not json_requested:
-                confirmed = typer.confirm(
-                    "Remove logs for rebuild "
-                    f"{rebuild_id}? ({len(builds_to_remove)} build(s))"
-                )
-            if not confirmed:
-                if json_requested:
-                    json_response(
-                        ctx,
-                        "success",
-                        params=params,
-                        message="Log removal cancelled.",
-                        log_path=log_dir,
-                    )
-                return
             removed_paths: List[str] = []
             missing_paths: List[str] = []
             errors: List[Dict[str, str]] = []
@@ -480,21 +464,6 @@ def logs_cmd(
                     console.print(
                         "Some log directories could not be removed.", style="red"
                     )
-            return
-        confirmed = True
-        if not json_requested:
-            confirmed = typer.confirm(
-                f"Are you sure you want to remove logs at {log_dir}?"
-            )
-        if not confirmed:
-            if json_requested:
-                json_response(
-                    ctx,
-                    "success",
-                    params=params,
-                    message="Log removal cancelled.",
-                    log_path=log_dir,
-                )
             return
         try:
             shutil.rmtree(log_dir, ignore_errors=True)
