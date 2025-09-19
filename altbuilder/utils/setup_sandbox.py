@@ -23,7 +23,9 @@ def derive_sandbox_name(branch, arch, task_id=None):
     return base_name
 
 
-def setup_sandbox(sandbox, branch, arch, reinit, config, task_id=None):
+def setup_sandbox(
+    sandbox, branch, arch, reinit, config, task_id=None, skip_hsh_init=False
+):
     """Set up or reinitialize a sandbox environment.
 
     Args:
@@ -33,6 +35,8 @@ def setup_sandbox(sandbox, branch, arch, reinit, config, task_id=None):
         reinit (bool): If True, reinitialize the sandbox if it exists.
         config (dict): Configuration dictionary.
         task_id (int, optional): Task ID to attach to the sandbox.
+        skip_hsh_init (bool): If True, avoid running hsh --initroot-only and
+            only (re)generate configuration files.
 
     Returns:
         Environment: Configured sandbox environment.
@@ -153,13 +157,19 @@ def setup_sandbox(sandbox, branch, arch, reinit, config, task_id=None):
                 f"[bold]Reinitializing sandbox: {sandbox_name} [{details}][/bold]"
             )
             env.clean()
-            env.init()
+            if skip_hsh_init:
+                env.prepare()
+            else:
+                env.init()
             rich_print(f"[green]Sandbox {sandbox_name} reinitialized successfully.[/green]")
         else:
             rich_print(f"[yellow]Sandbox {sandbox_name} already exists.[/yellow]")
     else:
         rich_print(f"[bold]Initializing sandbox: {sandbox_name} [{details}][/bold]")
-        env.init()
+        if skip_hsh_init:
+            env.prepare()
+        else:
+            env.init()
         rich_print(f"[green]Sandbox {sandbox_name} initialized successfully.[/green]")
 
     return env

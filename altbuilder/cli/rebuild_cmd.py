@@ -141,6 +141,7 @@ def rebuild_cmd(
             reinit,
             config,
             task_id=task,
+            skip_hsh_init=True,
         )
     except Exception as e:
         resolved_sandbox_name = resolve_sandbox_name_hint()
