@@ -1,12 +1,17 @@
 import getpass
 import os
 import subprocess
+from pathlib import Path
 
-import tomli_w
 import typer
 from rich import print as rich_print
 
-from altbuilder.config import USER_CONFIG_DIR, USER_CONFIG_FILE, load_config
+from altbuilder.config import (
+    DEFAULT_CONFIG_FILE,
+    USER_CONFIG_DIR,
+    USER_CONFIG_FILE,
+    load_config,
+)
 from altbuilder.exceptions import ConfigError
 from altbuilder.utils import logger
 from altbuilder.utils.json_utils import is_json_mode, json_response
@@ -51,7 +56,7 @@ def display_config(config):
     output.append("[bold yellow]Logging:[/bold yellow]")
     if "logging" in config:
         logging = config["logging"]
-        for key in ["level", "file_level", "rotation", "format"]:
+        for key in ["level", "file_level", "rotation", "format", "max_files"]:
             if key in logging:
                 output.append(
                     f"  [cyan]{key.capitalize()}[/cyan]: [white]{logging[key]}[/white]"
@@ -78,61 +83,48 @@ def display_config(config):
 
 
 def generate_user_config():
-    """Generate a user-specific default configuration."""
-    username = getpass.getuser()
-    # Capitalize username for packager name (e.g., "user" -> "User")
-    packager_name = username.capitalize()
-    packager_email = f"{username}@altlinux.org"
+    """Read the bundled default configuration and tailor it for the current user."""
 
-    base_dir = f"/tmp/.private/{username}/altbuilder"
-    build_logs_dir = f"/home/{username}/.altbuilder/builds"
-    # Ensure the base directory is writable
-    os.makedirs(base_dir, exist_ok=True)
-    if not os.access(base_dir, os.W_OK):
-        raise ConfigError(f"Directory {base_dir} is not writable")
+    try:
+        try:
+            current_user = getpass.getuser()
+        except Exception:
+            current_user = Path.home().name
 
-    config = {
-        "branch": "Sisyphus",
-        "arch": "x86_64",
-        "mirror": "http://ftp.altlinux.org/pub/distributions",
-        "mirror_task": "http://git.altlinux.org",
-        "rdb_url": "https://rdb.altlinux.org",
-        "packager": f"{packager_name} <{packager_email}>",
-        "base_dir": base_dir,
-        "environment_dir": os.path.join(base_dir, "environments"),
-        "build_logs_dir": build_logs_dir,
-        "logging": {
-            "level": "ERROR",
-            "file_level": "DEBUG",
-            "rotation": "10 MB",
-            "format": "{time} | {level} | {message}",
-        },
-        "sandboxes": {
-            "Sisyphus-x86_64": {"mirror": "http://ftp.altlinux.org/pub/distributions"}
-        },
-    }
+        with open(DEFAULT_CONFIG_FILE, "r", encoding="utf-8") as f:
+            template = f.read()
 
-    return config
+        packager_placeholder = 'packager = "User <user@altlinux.org>"'
+        if packager_placeholder in template:
+            template = template.replace(
+                packager_placeholder,
+                f'packager = "{current_user} <{current_user}@altlinux.org>"',
+            )
+
+        template = template.replace("<user>", current_user)
+        return template.encode("utf-8")
+    except OSError as e:
+        raise ConfigError(f"Failed to read default configuration: {e}") from e
 
 
 def ensure_config_file(force=False):
     """Ensure the config file exists, initializing with user-specific defaults if necessary."""
     if not USER_CONFIG_FILE.exists():
-        config = generate_user_config()
+        config_bytes = generate_user_config()
         try:
             os.makedirs(USER_CONFIG_DIR, exist_ok=True)
             with open(USER_CONFIG_FILE, "wb") as f:
-                tomli_w.dump(config, f)
+                f.write(config_bytes)
             logger.info(f"Initialized user-specific config at {USER_CONFIG_FILE}")
             return True
         except Exception as e:
             logger.error(f"Failed to initialize config: {e}")
             raise ConfigError(f"Failed to initialize config: {e}")
     elif force:
-        config = generate_user_config()
+        config_bytes = generate_user_config()
         try:
             with open(USER_CONFIG_FILE, "wb") as f:
-                tomli_w.dump(config, f)
+                f.write(config_bytes)
             logger.info(
                 f"Overwrote config with user-specific defaults at {USER_CONFIG_FILE}"
             )

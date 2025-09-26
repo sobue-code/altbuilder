@@ -75,6 +75,7 @@ def load_config(config_file=None):
             "file_level": "DEBUG",
             "rotation": "10 MB",
             "format": "{time} | {level} | {message}",
+            "max_files": 10,
         },
     )
 
@@ -85,6 +86,20 @@ def load_config(config_file=None):
     if config["logging"]["file_level"] not in valid_levels:
         raise ConfigError(
             f"Invalid file logging level: {config['logging']['file_level']}"
+        )
+
+    logging_config = config["logging"]
+    logging_config.setdefault("max_files", 10)
+    max_files = logging_config.get("max_files")
+    try:
+        if max_files is not None:
+            max_files = int(max_files)
+            if max_files <= 0:
+                raise ValueError
+            logging_config["max_files"] = max_files
+    except (TypeError, ValueError):
+        raise ConfigError(
+            f"Invalid logging max_files value: {logging_config.get('max_files')}"
         )
 
     # Ensure directories are writable

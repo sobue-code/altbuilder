@@ -16,3 +16,4 @@ level = "ERROR"
 file_level = "DEBUG"
 rotation = "10 MB"
 format = "{time} | {level} | {message}"
+max_files = 5

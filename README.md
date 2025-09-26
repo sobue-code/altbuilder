@@ -119,6 +119,7 @@ level = "ERROR"
 file_level = "DEBUG"
 rotation = "10 MB"
 format = "{time} | {level} | {message}"
+max_files = 10
 
 # Optional per-sandbox overrides
 [sandboxes.Sisyphus-x86_64]

@@ -16,8 +16,12 @@ def init_logger(
             "file_level": "DEBUG",
             "rotation": "10 MB",
             "format": "{time} | {level} | {message}",
+            "max_files": 10,
         }
     )
+
+    retention = log_config.get("max_files")
+    retention_options = {"retention": retention} if retention is not None else {}
 
     # Add console handler
     logger.add(sys.stderr, level=log_config["level"], format=log_config["format"])
@@ -31,6 +35,7 @@ def init_logger(
             rotation=log_config["rotation"],
             level=log_config["file_level"],
             format=log_config["format"],
+            **retention_options,
         )
 
     # Add sandbox-specific file handler if sandbox_name and log_dir are provided
@@ -48,6 +53,7 @@ def init_logger(
             rotation=log_config["rotation"],
             level=log_config["file_level"],
             format=log_config["format"],
+            **retention_options,
         )
 
         # If a command log file is specified, create a specific logger for commands
@@ -59,6 +65,7 @@ def init_logger(
                 level=log_config["file_level"],
                 format="{time} | CMD | {message}",
                 filter=lambda record: record["extra"].get("type") == "command",
+                **retention_options,
             )
 
 
