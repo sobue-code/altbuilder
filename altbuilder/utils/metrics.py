@@ -49,9 +49,8 @@ class Metrics:
         own_pid = os.getpid()
 
         # Check if a task is already running
-        if os.path.exists(temp_json_path):
-            with open(temp_json_path, "r") as f:
-                task = json.load(f)
+        task = self._load_task_file(temp_json_path)
+        if task:
             pid = task.get("pid")
             if pid and pid != own_pid and self.is_process_running(pid):
                 logger.info(
@@ -60,12 +59,10 @@ class Metrics:
                 )
                 while self.is_process_running(pid):
                     time.sleep(1)
-                if os.path.exists(temp_json_path):
-                    os.remove(temp_json_path)
+                self._remove_file(temp_json_path)
             else:
                 logger.warning(f"Stale task file found for PID {pid}. Removing it.")
-                if os.path.exists(temp_json_path):
-                    os.remove(temp_json_path)
+                self._remove_file(temp_json_path)
 
         start_time = datetime.now().isoformat()
         task_info = {
@@ -104,10 +101,9 @@ class Metrics:
             success = True
         finally:
             duration = time.time() - start_time_seconds
-            if os.path.exists(temp_json_path):
-                os.remove(temp_json_path)
-            if temp_result_path and os.path.exists(temp_result_path):
-                os.remove(temp_result_path)
+            self._remove_file(temp_json_path)
+            if temp_result_path:
+                self._remove_file(temp_result_path)
 
             if build_log_dir:
                 result = {
@@ -152,9 +148,8 @@ class Metrics:
         own_pid = os.getpid()
         
         # Check if a task is already running
-        if os.path.exists(temp_json_path):
-            with open(temp_json_path, "r") as f:
-                task = json.load(f)
+        task = self._load_task_file(temp_json_path)
+        if task:
             pid = task.get("pid")
             if pid and pid != own_pid and self.is_process_running(pid):
                 logger.info(
@@ -163,12 +158,10 @@ class Metrics:
                 )
                 while self.is_process_running(pid):
                     time.sleep(1)
-                if os.path.exists(temp_json_path):
-                    os.remove(temp_json_path)
+                self._remove_file(temp_json_path)
             else:
                 logger.warning(f"Stale task file found for PID {pid}. Removing it.")
-                if os.path.exists(temp_json_path):
-                    os.remove(temp_json_path)
+                self._remove_file(temp_json_path)
 
         start_time = datetime.now().isoformat()
         task_info = {
@@ -205,10 +198,9 @@ class Metrics:
             success = True
         finally:
             duration = time.time() - start_time_seconds
-            if os.path.exists(temp_json_path):
-                os.remove(temp_json_path)
-            if temp_result_path and os.path.exists(temp_result_path):
-                os.remove(temp_result_path)
+            self._remove_file(temp_json_path)
+            if temp_result_path:
+                self._remove_file(temp_result_path)
 
             if log_dir:
                 result = {
@@ -235,13 +227,38 @@ class Metrics:
         if not self.base_dir:
             raise ValueError("base_dir is required")
         temp_json_path = os.path.join(self.base_dir, "current_task.json")
-        if os.path.exists(temp_json_path):
-            with open(temp_json_path, "r") as f:
-                task = json.load(f)
-            pid = task.get("pid")
-            if pid and not self.is_process_running(pid):
-                logger.warning(f"Stale task file found for PID {pid}. Removing it.")
-                os.remove(temp_json_path)
-                return None
-            return task
+        task = self._load_task_file(temp_json_path)
+        if not task:
+            return None
+
+        pid = task.get("pid")
+        if pid and not self.is_process_running(pid):
+            logger.warning(f"Stale task file found for PID {pid}. Removing it.")
+            self._remove_file(temp_json_path)
+            return None
+        return task
+
+    def _load_task_file(self, path):
+        """Safely load a task tracking file, removing it when corrupt."""
+        if not os.path.exists(path):
+            return None
+
+        try:
+            with open(path, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as err:
+            logger.warning(
+                f"Failed to read task tracking file {path}: {err}. Removing it and continuing."
+            )
+            self._remove_file(path)
         return None
+
+    @staticmethod
+    def _remove_file(path):
+        """Best-effort removal of a file."""
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            return
+        except OSError as err:
+            logger.warning(f"Failed to remove file {path}: {err}")
