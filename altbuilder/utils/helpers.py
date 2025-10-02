@@ -1,5 +1,6 @@
 import os
 import platform
+import signal
 import subprocess
 import shutil
 import shlex
@@ -31,49 +32,59 @@ def run_logged_command(
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
             output_file = open(log_file, "w")
 
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",  # Replace invalid bytes with �
-            bufsize=1,  # Line buffered
-            **{
-                k: v for k, v in kwargs.items() if k not in ["stdout", "stderr", "text"]
-            },
-        )
-
+        process = None
         output_lines = []
-        for line in iter(process.stdout.readline, ""):
-            if line:
-                line = line.rstrip()
-                output_lines.append(line)
-                print(line)  # Always print to console
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",  # Replace invalid bytes with �
+                bufsize=1,  # Line buffered
+                **{
+                    k: v for k, v in kwargs.items() if k not in ["stdout", "stderr", "text"]
+                },
+            )
 
-                # Only log to DEBUG if not in quiet mode
-                if not quiet:
-                    cmd_logger().debug(line)
+            for line in iter(process.stdout.readline, ""):
+                if line:
+                    line = line.rstrip()
+                    output_lines.append(line)
+                    print(line)  # Always print to console
 
-                if output_file:
-                    output_file.write(f"{line}\n")
-                    output_file.flush()  # Ensure writing in real-time
+                    # Only log to DEBUG if not in quiet mode
+                    if not quiet:
+                        cmd_logger().debug(line)
 
-        process.stdout.close()
-        return_code = process.wait()
+                    if output_file:
+                        output_file.write(f"{line}\n")
+                        output_file.flush()  # Ensure writing in real-time
 
-        if output_file:
-            output_file.close()
+            process.stdout.close()
+            return_code = process.wait()
 
-        output = "\n".join(output_lines)
+            output = "\n".join(output_lines)
 
-        if check and return_code != 0:
-            error_msg = f"Command failed with exit code {return_code}: {cmd_str}"
-            logger.error(error_msg)
-            cmd_logger().error(error_msg)
-            raise subprocess.CalledProcessError(return_code, cmd, output=output)
+            if check and return_code != 0:
+                error_msg = f"Command failed with exit code {return_code}: {cmd_str}"
+                logger.error(error_msg)
+                cmd_logger().error(error_msg)
+                raise subprocess.CalledProcessError(return_code, cmd, output=output)
 
-        return subprocess.CompletedProcess(cmd, return_code, stdout=output, stderr="")
+            return subprocess.CompletedProcess(cmd, return_code, stdout=output, stderr="")
+        except KeyboardInterrupt:
+            _terminate_process(process, cmd_str)
+            raise
+        except Exception:
+            _terminate_process(process, cmd_str)
+            raise
+        finally:
+            if process and process.stdout and not process.stdout.closed:
+                process.stdout.close()
+            if output_file:
+                output_file.close()
     else:
         # Fall back to original behavior for non-real-time or redirected output
         try:
@@ -88,6 +99,42 @@ def run_logged_command(
         except subprocess.CalledProcessError as e:
             logger.error(f"Command failed with exit code {e.returncode}: {e.stderr}")
             raise
+
+
+def _terminate_process(process, cmd_str):
+    if not process:
+        return
+
+    if process.poll() is not None:
+        return
+
+    termination_message = f"Interrupt received, terminating command: {cmd_str}"
+    logger.warning(termination_message)
+    cmd_logger().warning(termination_message)
+
+    if process.stdout and not process.stdout.closed:
+        process.stdout.close()
+
+    try:
+        process.send_signal(signal.SIGINT)
+    except Exception:
+        fallback_message = f"Falling back to terminate for command: {cmd_str}"
+        logger.debug(fallback_message)
+        cmd_logger().debug(fallback_message)
+        process.terminate()
+
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        timeout_message = f"Command did not exit after interrupt, forcing kill: {cmd_str}"
+        logger.warning(timeout_message)
+        cmd_logger().warning(timeout_message)
+        process.kill()
+        process.wait()
+
+    cleaned_message = f"Command terminated after interrupt: {cmd_str}"
+    logger.info(cleaned_message)
+    cmd_logger().info(cleaned_message)
 
 
 def open_with_file_manager(path, file_manager=None):
