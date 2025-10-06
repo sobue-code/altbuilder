@@ -1,5 +1,6 @@
 import os
 import subprocess
+from typing import Any, Dict, Optional
 
 import typer
 from rich import print as rich_print
@@ -12,6 +13,12 @@ from altbuilder.utils import get_spec_metadata, logger
 from altbuilder.utils.check_task_info import fetch_task_info
 from altbuilder.utils.json_utils import is_json_mode, json_response
 from altbuilder.utils.setup_sandbox import derive_sandbox_name, setup_sandbox
+
+CLI_ERROR_EXIT_CODE = 1
+REBUILD_FAILURE_EXIT_CODE = 2
+DEFAULT_ERROR_TYPE = "altbuilder_error"
+REBUILD_ERROR_TYPE = "rebuild_failed"
+
 
 app = typer.Typer(
     name="rebuild",
@@ -94,10 +101,20 @@ def rebuild_cmd(
     }
     log_path = None
 
-    def emit_error(message: str, *, code: int = 1, log: bool = True) -> None:
+    def emit_error(
+        message: str,
+        *,
+        code: int = CLI_ERROR_EXIT_CODE,
+        log: bool = True,
+        error_type: str = DEFAULT_ERROR_TYPE,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
         if log:
             logger.error(message)
         if json_mode:
+            payload: Dict[str, Any] = extra.copy() if extra else {}
+            if error_type and "error_type" not in payload:
+                payload["error_type"] = error_type
             json_response(
                 ctx,
                 "error",
@@ -105,10 +122,13 @@ def rebuild_cmd(
                 message=message,
                 log_path=log_path,
                 code=code,
+                **payload,
             )
         else:
             rich_print(f"[red]{message}[/red]")
             raise typer.Exit(code=code)
+
+    build_started = False
 
     try:
         config = load_config()
@@ -211,6 +231,7 @@ def rebuild_cmd(
 
         hasher = HasherAdapter(base_dir=config.get("base_dir"))
         builder = BuildManager(env, hasher_adapter=hasher)
+        build_started = True
         builder.build(
             build_target=src_rpm_path,
             is_src_rpm=True,
@@ -268,10 +289,30 @@ def rebuild_cmd(
                 getattr(e, "returncode", "unknown"),
                 " ".join(getattr(e, "cmd", [])) if getattr(e, "cmd", None) else str(e),
             )
-            emit_error(f"Failed to rebuild {package_name}: {e}", log=False)
+            extra: Dict[str, Any] = {}
+            if getattr(e, "returncode", None) is not None:
+                extra.setdefault("error_details", {})["returncode"] = e.returncode
+            if getattr(e, "cmd", None):
+                extra.setdefault("error_details", {})["command"] = " ".join(e.cmd)
+            error_type = REBUILD_ERROR_TYPE if build_started else DEFAULT_ERROR_TYPE
+            exit_code = (
+                REBUILD_FAILURE_EXIT_CODE
+                if build_started
+                else CLI_ERROR_EXIT_CODE
+            )
+            emit_error(
+                f"Failed to rebuild {package_name}: {e}",
+                log=False,
+                code=exit_code,
+                error_type=error_type,
+                extra=extra or None,
+            )
         else:
             logger.error("Unexpected error during rebuild: %s", e)
-            emit_error(f"Failed to rebuild {package_name}: {e}", log=False)
+            emit_error(
+                f"Failed to rebuild {package_name}: {e}",
+                log=False,
+            )
     finally:
         if temp_file and os.path.exists(temp_file):
             try:
