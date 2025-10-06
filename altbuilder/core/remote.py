@@ -302,7 +302,7 @@ class RemoteRepository:
         repo_url = self.get_package_repo_url(mirror, branch)
 
         pattern = re.compile(
-            rf"^{re.escape(package_name)}-[0-9][0-9a-zA-Z._%+-]+-[0-9a-zA-Z._%+-]+\.src\.rpm$"
+            rf"^{re.escape(package_name)}-[0-9][0-9a-zA-Z._%+-]*-[0-9a-zA-Z._%+-]+\.src\.rpm$"
         )
 
         if mirror.startswith("file:"):
