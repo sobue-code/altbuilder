@@ -1,6 +1,7 @@
 import json
 import os
 import signal
+from typing import Optional
 
 import typer
 
@@ -21,10 +22,15 @@ def stop_cmd(
     force: bool = typer.Option(
         False, "--force", "-f", help="Forcefully stop the task without confirmation."
     ),
+    package: Optional[str] = typer.Option(
+        None,
+        "--package",
+        help="Stop the task only if it matches the specified package name.",
+    ),
 ):
     """Stop the current running task."""
     json_mode = is_json_mode(ctx)
-    params = {"force": force}
+    params = {"force": force, "package": package}
     config = load_config()
     metrics = Metrics(base_dir=config["base_dir"])
     task = metrics.get_current_task()
@@ -43,6 +49,25 @@ def stop_cmd(
         else:
             typer.echo(message)
         raise typer.Exit()
+
+    if package and task.get("package") != package:
+        current_package = task.get("package") or "unknown"
+        message = (
+            "A task is running, but it does not match the specified package name. "
+            f"Current package: '{current_package}', expected: '{package}'."
+        )
+        if json_mode:
+            json_response(
+                ctx,
+                "error",
+                params=params,
+                message=message,
+                code=1,
+                task=task,
+            )
+        else:
+            typer.echo(message)
+        raise typer.Exit(code=1)
 
     # Show task details
     logger.info("Current task details:")
