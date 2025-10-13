@@ -9,6 +9,7 @@ from rich import print as rich_print
 from altbuilder.config import USER_CONFIG_DIR, USER_CONFIG_FILE, load_config
 from altbuilder.exceptions import ConfigError
 from altbuilder.utils import logger
+from altbuilder.utils.json_utils import is_json_mode, json_response
 
 app = typer.Typer(
     name="config",
@@ -169,26 +170,56 @@ def config_cmd(
     Use --edit to open the config file in your default editor.
     Use --init to generate a new config with user-specific defaults.
     """
+    json_mode = is_json_mode(ctx)
+
     # Handle --init
     if init:
         if USER_CONFIG_FILE.exists() and not force:
-            rich_print(
-                f"[yellow]Config file already exists at {USER_CONFIG_FILE}. Use --force to overwrite.[/yellow]"
-            )
-            raise typer.Abort()
+            error_msg = f"Config file already exists at {USER_CONFIG_FILE}. Use --force to overwrite."
+            if json_mode:
+                json_response(
+                    ctx,
+                    "error",
+                    message=error_msg,
+                    config_file=str(USER_CONFIG_FILE),
+                    code=1,
+                )
+            else:
+                rich_print(f"[yellow]{error_msg}[/yellow]")
+                raise typer.Abort()
+            return
 
-        initialized = ensure_config_file(force=force)
-        if initialized:
-            rich_print(
-                f"[green]Generated user-specific config at {USER_CONFIG_FILE}[/green]"
-            )
+        try:
+            initialized = ensure_config_file(force=force)
+            if initialized:
+                success_msg = f"Generated user-specific config at {USER_CONFIG_FILE}"
+                if json_mode:
+                    json_response(
+                        ctx,
+                        "success",
+                        message=success_msg,
+                        config_file=str(USER_CONFIG_FILE),
+                    )
+                else:
+                    rich_print(f"[green]{success_msg}[/green]")
+        except ConfigError as e:
+            error_msg = f"Failed to initialize config: {e}"
+            if json_mode:
+                json_response(ctx, "error", message=error_msg, code=1)
+            else:
+                rich_print(f"[red]{error_msg}[/red]")
+                raise typer.Abort()
         return
 
     # Load configuration
     try:
         config = load_config()
     except ConfigError as e:
-        rich_print(f"[red]Error loading config: {e}[/red]")
+        error_msg = f"Error loading config: {e}"
+        if json_mode:
+            json_response(ctx, "error", message=error_msg, code=1)
+        else:
+            rich_print(f"[red]{error_msg}[/red]")
         raise typer.Abort()
 
     # Handle --edit
@@ -216,7 +247,18 @@ def config_cmd(
             raise typer.Abort()
 
     # Default action: Display configuration
-    rich_print(display_config(config))
+    if json_mode:
+        # Prepare config for JSON output (remove internal keys)
+        output_config = {k: v for k, v in config.items() if k != "config_file"}
+        json_response(
+            ctx,
+            "success",
+            message="Configuration loaded successfully",
+            config_file=config.get("config_file", str(USER_CONFIG_FILE)),
+            config=output_config,
+        )
+    else:
+        rich_print(display_config(config))
 
 
 if __name__ == "__main__":

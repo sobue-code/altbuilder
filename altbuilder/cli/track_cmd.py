@@ -9,12 +9,14 @@ from rich.text import Text
 from altbuilder.config import load_config
 from altbuilder.utils.logger import logger
 from altbuilder.utils.metrics import Metrics
+from altbuilder.utils.json_utils import is_json_mode, json_response
 
 app = typer.Typer(name="track", help="Display information about the current task.")
 
 
 @app.command()
 def track_cmd(
+    ctx: typer.Context,
     watch: bool = typer.Option(
         False,
         "--watch",
@@ -22,25 +24,42 @@ def track_cmd(
     ),
 ):
     """Display information about the current task."""
+    json_mode = is_json_mode(ctx)
     config = load_config()
     console = Console()
 
     # Initialize Metrics with base directory
-    metrics = Metrics(base_dir=config["base_dir"])  # Adjust key if needed
+    metrics = Metrics(base_dir=config["base_dir"])
 
     if not watch:
         # Default behavior: display task info once
         task = metrics.get_current_task()
         if not task:
             logger.info("No tasks are currently running.")
-            typer.echo("No tasks are currently running.")
+            if json_mode:
+                json_response(ctx, "success", message="No tasks are currently running.", task=None)
+            else:
+                typer.echo("No tasks are currently running.")
             return
 
         logger.info("Current task details:")
-        typer.echo(json.dumps(task, indent=2, ensure_ascii=False))
+        if json_mode:
+            json_response(ctx, "success", message="Current task details", task=task)
+        else:
+            typer.echo(json.dumps(task, indent=2, ensure_ascii=False))
         return
 
     # Watch mode: continuously monitor task with smooth updates
+    # JSON mode не поддерживает watch (это реалтайм обновления)
+    if json_mode:
+        json_response(
+            ctx,
+            "error",
+            message="Watch mode (--watch) is not supported in JSON mode.",
+            code=1,
+        )
+        return
+
     try:
         with Live(console=console, refresh_per_second=2) as live:
             while True:

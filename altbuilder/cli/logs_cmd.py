@@ -14,6 +14,7 @@ from rich.tree import Tree
 
 from altbuilder.config import load_config
 from altbuilder.utils import init_logger, logger, open_with_file_manager
+from altbuilder.utils.json_utils import is_json_mode
 
 app = typer.Typer(
     name="logs",
@@ -323,6 +324,9 @@ def logs_cmd(
     ),
 ):
     """Display or manage build logs for sandboxes and packages."""
+    # Support both global --json and local --json-output flags
+    json_mode = is_json_mode(ctx) or json_output
+
     config = load_config()
     init_logger(config=config)
     console = Console()
@@ -419,7 +423,7 @@ def logs_cmd(
         display_spec_diff(build1, build2)
         return
 
-    if json_output:
+    if json_mode:
         if limit:
             limited_builds = builds[:limit]
             typer.echo(json.dumps(limited_builds, indent=2, ensure_ascii=False))

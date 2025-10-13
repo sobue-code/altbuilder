@@ -6,8 +6,9 @@ from rich import print as rich_print
 from altbuilder.config import load_config
 from altbuilder.core.build_manager import BuildManager
 from altbuilder.exceptions import ToolError
-from altbuilder.utils import get_spec_metadata, init_logger
+from altbuilder.utils import get_spec_metadata, init_logger, logger
 from altbuilder.utils.setup_sandbox import setup_sandbox
+from altbuilder.utils.json_utils import is_json_mode, json_response
 
 app = typer.Typer(
     name="build",
@@ -52,6 +53,7 @@ def build_cmd(
     ),
 ):
     """Build a package in the specified sandbox. BUILD_TARGET can be a source directory or an src.rpm file."""
+    json_mode = is_json_mode(ctx)
     config = load_config()
 
     # Use sandbox from context if not provided
@@ -72,8 +74,14 @@ def build_cmd(
     # Set up sandbox environment
     env = setup_sandbox(sandbox, branch, arch, reinit, config, task_id=task)
     if env is None:
-        rich_print("[red]Error: Failed to initialize sandbox.[/red]")
-        raise typer.Exit(code=1)
+        error_msg = "Failed to initialize sandbox."
+        logger.error(error_msg)
+        if json_mode:
+            json_response(ctx, "error", message=error_msg, code=1)
+        else:
+            rich_print(f"[red]Error: {error_msg}[/red]")
+            raise typer.Exit(code=1)
+        return
 
     # Get package metadata
     package_name, version, release = get_spec_metadata(build_target, is_src_rpm)
@@ -87,9 +95,11 @@ def build_cmd(
         release = "unknown"
 
     # Log package metadata
-    rich_print(
-        f"[bold]Building {package_name} (Version: {version}, Release: {release}) in sandbox: {env.name}[/bold]"
-    )
+    build_message = f"Building {package_name} (Version: {version}, Release: {release}) in sandbox: {env.name}"
+    logger.info(build_message)
+    if not json_mode:
+        rich_print(f"[bold]{build_message}[/bold]")
+
     log_dir = os.path.join(config["build_logs_dir"], env.name, package_name)
 
     # Create build-specific log directory
@@ -116,13 +126,46 @@ def build_cmd(
             hsh_extra=hsh_extra,
             rpmbuild_extra=rpmbuild_extra,
         )
-        rich_print(f"[green]Build completed in sandbox {env.name}.[/green]")
-        rich_print(f"[cyan]Build logs available at: {built_log_dir}[/cyan]")
+        success_msg = f"Build completed in sandbox {env.name}."
+        logger.info(success_msg)
+
+        if json_mode:
+            json_response(
+                ctx,
+                "success",
+                message=success_msg,
+                log_path=built_log_dir,
+                package={
+                    "name": package_name,
+                    "version": version,
+                    "release": release,
+                },
+                sandbox=env.name,
+            )
+        else:
+            rich_print(f"[green]{success_msg}[/green]")
+            rich_print(f"[cyan]Build logs available at: {built_log_dir}[/cyan]")
     except ToolError as e:
-        rich_print(
-            f"[red]Error building package {package_name}: {str(e)}. Logs available at: {built_log_dir}[/red]"
-        )
-        raise typer.Exit(code=1)
+        error_msg = f"Error building package {package_name}: {str(e)}"
+        logger.error(error_msg)
+
+        if json_mode:
+            json_response(
+                ctx,
+                "error",
+                message=error_msg,
+                log_path=built_log_dir,
+                package={
+                    "name": package_name,
+                    "version": version,
+                    "release": release,
+                },
+                sandbox=env.name,
+                code=1,
+            )
+        else:
+            rich_print(f"[red]{error_msg}. Logs available at: {built_log_dir}[/red]")
+            raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,8 @@ import subprocess
 
 from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.environment import Environment
-from altbuilder.utils import init_logger
+from altbuilder.utils import init_logger, logger
+from altbuilder.utils.json_utils import is_json_mode, json_response
 from rich import print as rich_print
 
 app = typer.Typer()
@@ -15,6 +16,7 @@ app = typer.Typer()
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True}
 )
 def run_cmd(
+    ctx: typer.Context,
     sandbox: str = typer.Option(
         None,
         "--sandbox",
@@ -25,11 +27,17 @@ def run_cmd(
         ..., help="Command to run inside sandbox (pass after --)."
     ),
 ):
+    """Run command inside sandbox."""
+    json_mode = is_json_mode(ctx)
+
     if not command:
-        rich_print(
-            "[red]Error: No command provided. Usage: altbuilder run -s SANDBOX -- COMMAND[/red]"
-        )
-        raise typer.Exit(code=1)
+        error_msg = "No command provided. Usage: altbuilder run -s SANDBOX -- COMMAND"
+        if json_mode:
+            json_response(ctx, "error", message=error_msg, code=1)
+        else:
+            rich_print(f"[red]Error: {error_msg}[/red]")
+            raise typer.Exit(code=1)
+        return
 
     command_str = " ".join(command)
 
@@ -41,17 +49,48 @@ def run_cmd(
 
     env = Environment(sandbox_name, sandbox_config)
     if not env.exists():
-        rich_print(f"[red]Sandbox {sandbox_name} does not exist.[/red]")
-        raise typer.Exit(code=1)
+        error_msg = f"Sandbox {sandbox_name} does not exist."
+        logger.error(error_msg)
+        if json_mode:
+            json_response(ctx, "error", message=error_msg, sandbox=sandbox_name, code=1)
+        else:
+            rich_print(f"[red]{error_msg}[/red]")
+            raise typer.Exit(code=1)
+        return
 
     try:
         env.run(command_str)
-    except subprocess.CalledProcessError as e:
-        if e.output:
-            typer.echo(e.output.decode() if isinstance(e.output, bytes) else e.output)
+        success_msg = f"Command executed successfully in sandbox {sandbox_name}."
+        logger.info(success_msg)
+        if json_mode:
+            json_response(
+                ctx,
+                "success",
+                message=success_msg,
+                sandbox=sandbox_name,
+                command=command_str,
+            )
         else:
-            typer.echo(f"Command failed with exit code {e.returncode}")
-        raise typer.Exit(code=e.returncode)
+            rich_print(f"[green]{success_msg}[/green]")
+    except subprocess.CalledProcessError as e:
+        error_msg = f"Command failed with exit code {e.returncode}"
+        logger.error(error_msg)
+        if json_mode:
+            json_response(
+                ctx,
+                "error",
+                message=error_msg,
+                sandbox=sandbox_name,
+                command=command_str,
+                exit_code=e.returncode,
+                code=e.returncode,
+            )
+        else:
+            if e.output:
+                typer.echo(e.output.decode() if isinstance(e.output, bytes) else e.output)
+            else:
+                typer.echo(error_msg)
+            raise typer.Exit(code=e.returncode)
 
 
 if __name__ == "__main__":

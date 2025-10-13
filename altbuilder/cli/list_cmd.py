@@ -9,6 +9,7 @@ from rich.tree import Tree
 
 from altbuilder.config import load_config
 from altbuilder.utils import logger, open_with_file_manager, read_sandbox_info
+from altbuilder.utils.json_utils import is_json_mode, json_response
 
 app = typer.Typer(
     name="list",
@@ -33,6 +34,7 @@ def list_cmd(
     ),
 ):
     """List all existing sandboxes with their metadata and optional RPM details."""
+    json_mode = is_json_mode(ctx)
     config = load_config()
     logger.info("Listing all existing sandboxes")
     console = Console()
@@ -42,8 +44,12 @@ def list_cmd(
     sandbox = sandbox or ctx.obj.get("sandbox")
 
     if not os.path.exists(environment_dir):
+        message = "No sandboxes found."
+        logger.info(message)
+        if json_mode:
+            json_response(ctx, "success", message=message, sandboxes=[])
+            return
         console.print("[yellow]No sandboxes found.[/yellow]")
-        logger.info("No sandboxes found")
         return
 
     sandboxes = [
@@ -54,18 +60,27 @@ def list_cmd(
 
     if sandbox:
         if sandbox not in sandboxes:
-            console.print(f"[red]Sandbox '{sandbox}' not found.[/red]")
-            logger.info(f"Sandbox '{sandbox}' not found")
+            message = f"Sandbox '{sandbox}' not found."
+            logger.info(message)
+            if json_mode:
+                json_response(ctx, "error", message=message, code=1)
+            else:
+                console.print(f"[red]{message}[/red]")
+                raise typer.Exit(code=1)
             return
         sandboxes = [sandbox]
 
     if not sandboxes:
+        message = "No sandboxes found."
+        logger.info(message)
+        if json_mode:
+            json_response(ctx, "success", message=message, sandboxes=[])
+            return
         console.print("[yellow]No sandboxes found.[/yellow]")
-        logger.info("No sandboxes found")
         return
 
-    # Create tree for sandboxes
-    sandbox_tree = Tree(f"[bold blue]Sandboxes[/] ([cyan]{len(sandboxes)} found[/])")
+    # Collect sandbox data
+    sandboxes_data = []
 
     for sandbox_name in sorted(sandboxes):
         sandbox_path = os.path.join(environment_dir, sandbox_name)
@@ -74,44 +89,21 @@ def list_cmd(
         arch_value = info.get("arch")
         task_id = info.get("task_id")
 
-        sandbox_label = Text()
-        sandbox_label.append("📍 ", style="cyan")
-        sandbox_label.append(sandbox_name, style="cyan")
-        sandbox_label.append(" [", style="cyan")
+        sandbox_info = {
+            "name": sandbox_name,
+            "branch": branch_value or "<unknown>",
+            "arch": arch_value or "<unknown>",
+            "task_id": task_id if task_id not in (None, "<unknown>") else None,
+        }
 
-        if branch_value:
-            sandbox_label.append(str(branch_value), style="cyan")
-        else:
-            sandbox_label.append("<unknown>", style="red")
-
-        sandbox_label.append("-", style="cyan")
-
-        if arch_value:
-            sandbox_label.append(str(arch_value), style="cyan")
-        else:
-            sandbox_label.append("<unknown>", style="red")
-
-        if task_id not in (None, "<unknown>"):
-            sandbox_label.append(", ", style="cyan")
-            sandbox_label.append(str(task_id), style="cyan")
-
-        sandbox_label.append("]", style="cyan")
-        sandbox_node = sandbox_tree.add(sandbox_label)
-
-        # If --sandbox is specified, show RPM details
+        # If specific sandbox is requested, include RPM details
         if sandbox and sandbox_name == sandbox:
-            # Source RPMs
+            srpms = []
             srpms_dir = os.path.join(sandbox_path, "hasher", "repo", "SRPMS.hasher")
             if os.path.exists(srpms_dir):
-                # Render path as plain text to avoid markup errors
-                srpm_node = sandbox_node.add(
-                    Text(f"📦 Source RPMs [{srpms_dir}]", no_wrap=True)
-                )
-                for srpm in sorted(glob.glob(os.path.join(srpms_dir, "*.rpm"))):
-                    rpm_name = os.path.basename(srpm)
-                    srpm_node.add(f"[yellow]{rpm_name}[/]")
+                srpms = [os.path.basename(f) for f in sorted(glob.glob(os.path.join(srpms_dir, "*.rpm")))]
 
-            # Binary RPMs by architecture
+            arch_rpms = {}
             arch_dirs = sorted(
                 glob.glob(
                     os.path.join(sandbox_path, "hasher", "repo", "*", "RPMS.hasher")
@@ -119,13 +111,78 @@ def list_cmd(
             )
             for arch_dir in arch_dirs:
                 arch_name = os.path.basename(os.path.dirname(arch_dir))
-                # Render path as plain text to avoid markup errors
-                arch_node = sandbox_node.add(
-                    Text(f"📦 {arch_name} RPMs [{arch_dir}]", no_wrap=True)
+                rpms = [os.path.basename(f) for f in sorted(glob.glob(os.path.join(arch_dir, "*.rpm")))]
+                arch_rpms[arch_name] = rpms
+
+            sandbox_info["srpms"] = srpms
+            sandbox_info["rpms"] = arch_rpms
+
+        sandboxes_data.append(sandbox_info)
+
+    # JSON mode output
+    if json_mode:
+        json_response(
+            ctx,
+            "success",
+            message=f"Found {len(sandboxes_data)} sandbox(es).",
+            sandboxes=sandboxes_data,
+            count=len(sandboxes_data),
+        )
+        return
+
+    # Create tree for sandboxes (non-JSON mode)
+    sandbox_tree = Tree(f"[bold blue]Sandboxes[/] ([cyan]{len(sandboxes)} found[/])")
+
+    for sandbox_info in sandboxes_data:
+        sandbox_name = sandbox_info["name"]
+        branch_value = sandbox_info["branch"]
+        arch_value = sandbox_info["arch"]
+        task_id = sandbox_info["task_id"]
+
+        sandbox_label = Text()
+        sandbox_label.append("📍 ", style="cyan")
+        sandbox_label.append(sandbox_name, style="cyan")
+        sandbox_label.append(" [", style="cyan")
+
+        if branch_value != "<unknown>":
+            sandbox_label.append(str(branch_value), style="cyan")
+        else:
+            sandbox_label.append("<unknown>", style="red")
+
+        sandbox_label.append("-", style="cyan")
+
+        if arch_value != "<unknown>":
+            sandbox_label.append(str(arch_value), style="cyan")
+        else:
+            sandbox_label.append("<unknown>", style="red")
+
+        if task_id is not None:
+            sandbox_label.append(", ", style="cyan")
+            sandbox_label.append(str(task_id), style="cyan")
+
+        sandbox_label.append("]", style="cyan")
+        sandbox_node = sandbox_tree.add(sandbox_label)
+
+        # If --sandbox is specified, show RPM details
+        if sandbox and sandbox_name == sandbox_info["name"]:
+            if "srpms" in sandbox_info and sandbox_info["srpms"]:
+                sandbox_path = os.path.join(environment_dir, sandbox_name)
+                srpms_dir = os.path.join(sandbox_path, "hasher", "repo", "SRPMS.hasher")
+                srpm_node = sandbox_node.add(
+                    Text(f"📦 Source RPMs [{srpms_dir}]", no_wrap=True)
                 )
-                for rpm in sorted(glob.glob(os.path.join(arch_dir, "*.rpm"))):
-                    rpm_name = os.path.basename(rpm)
-                    arch_node.add(f"[green]{rpm_name}[/]")
+                for rpm_name in sandbox_info["srpms"]:
+                    srpm_node.add(f"[yellow]{rpm_name}[/]")
+
+            if "rpms" in sandbox_info:
+                sandbox_path = os.path.join(environment_dir, sandbox_name)
+                for arch_name, rpm_list in sandbox_info["rpms"].items():
+                    arch_dir = os.path.join(sandbox_path, "hasher", "repo", arch_name, "RPMS.hasher")
+                    arch_node = sandbox_node.add(
+                        Text(f"📦 {arch_name} RPMs [{arch_dir}]", no_wrap=True)
+                    )
+                    for rpm_name in rpm_list:
+                        arch_node.add(f"[green]{rpm_name}[/]")
 
     # Print tree in a panel
     console.print(Panel(sandbox_tree, title="Sandboxes", border_style="blue"))
