@@ -1,5 +1,6 @@
 import getpass
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -18,7 +19,8 @@ from altbuilder.utils.json_utils import is_json_mode, json_response
 
 app = typer.Typer(
     name="config",
-    help="Display, edit, or initialize the altbuilder configuration.",
+    help="Manage altbuilder configuration with subcommands for initialization, editing, and display.",
+    invoke_without_command=True,
 )
 
 
@@ -76,7 +78,7 @@ def display_config(config):
     # Footer with usage hint
     output.append("")
     output.append(
-        "[green]Tip: Use 'altbuilder config --edit' to modify or 'altbuilder config --init' to generate a new config.[/green]"
+        "[green]Tip: Use 'altbuilder config edit' to modify or 'altbuilder config init' to generate a new config.[/green]"
     )
 
     return "\n".join(output)
@@ -135,89 +137,118 @@ def ensure_config_file(force=False):
     return False
 
 
-@app.command()
-def config_cmd(
-    ctx: typer.Context,
-    edit: bool = typer.Option(
-        False,
-        "--edit",
-        "-e",
-        help="Open the configuration file in the default editor (uses $EDITOR or nano).",
-    ),
-    init: bool = typer.Option(
-        False,
-        "--init",
-        help="Generate a new ~/.altbuilder/config.toml with user-specific defaults.",
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        help="Force overwrite of existing config file when using --init.",
-    ),
-):
-    """
-    Display, edit, or initialize the altbuilder configuration.
+def expand_env_vars(value: str) -> str:
+    """Expand environment variables in a string value.
 
-    By default, shows the current configuration in a readable format.
-    Use --edit to open the config file in your default editor.
-    Use --init to generate a new config with user-specific defaults.
+    Supports both $VAR and ${VAR} syntax.
+    Examples:
+        "$HOME/.altbuilder" -> "/home/user/.altbuilder"
+        "$USER <$USER@altlinux.org>" -> "test <test@altlinux.org>"
+    """
+    if not isinstance(value, str):
+        return value
+
+    # Expand using os.path.expandvars (handles $VAR and ${VAR})
+    expanded = os.path.expandvars(value)
+
+    # Also expand ~ for home directory
+    if "~" in expanded:
+        expanded = os.path.expanduser(expanded)
+
+    return expanded
+
+
+def update_config_field(field: str, value: str) -> tuple[str, bool]:
+    """Update a specific field in the user config file.
+
+    Args:
+        field: The configuration field name (e.g., 'mirror', 'packager')
+        value: The new value (will be expanded for environment variables)
+
+    Returns:
+        Tuple of (expanded_value, was_created) where was_created indicates if config was auto-created
+
+    Raises:
+        ConfigError: If field update fails
+    """
+    # Auto-create config if it doesn't exist
+    was_created = False
+    if not USER_CONFIG_FILE.exists():
+        ensure_config_file()
+        was_created = True
+
+    # Expand environment variables in the value
+    expanded_value = expand_env_vars(value)
+
+    try:
+        with open(USER_CONFIG_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        # Find and update the field
+        field_pattern = re.compile(rf'^(\s*){re.escape(field)}\s*=')
+        updated = False
+        new_lines = []
+
+        for line in lines:
+            if field_pattern.match(line):
+                # Preserve indentation
+                indent = field_pattern.match(line).group(1)
+                # Format the new value (add quotes for strings)
+                new_lines.append(f'{indent}{field} = "{expanded_value}"\n')
+                updated = True
+            else:
+                new_lines.append(line)
+
+        if not updated:
+            raise ConfigError(
+                f"Field '{field}' not found in config file. "
+                f"Available fields can be seen with 'altbuilder config show'."
+            )
+
+        # Write back to file
+        with open(USER_CONFIG_FILE, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+
+        logger.info(f"Updated {field} = {expanded_value} in {USER_CONFIG_FILE}")
+        return (expanded_value, was_created)
+
+    except ConfigError:
+        raise
+    except Exception as e:
+        raise ConfigError(f"Failed to update config field: {e}") from e
+
+
+@app.callback(invoke_without_command=True)
+def config_callback(ctx: typer.Context):
+    """Manage altbuilder configuration.
+
+    Without a subcommand, defaults to 'show' to display current configuration.
+
+    Examples:
+        altbuilder config                    # Show current configuration
+        altbuilder config show               # Same as above
+        altbuilder config init               # Initialize new configuration
+        altbuilder config edit               # Edit configuration in editor
+        altbuilder config edit --field mirror "file:/mnt/repo"
+    """
+    if ctx.invoked_subcommand is None:
+        # Default to show command
+        ctx.invoke(show_cmd, ctx)
+
+
+@app.command("show")
+def show_cmd(ctx: typer.Context):
+    """Display the current altbuilder configuration.
+
+    Shows all configuration settings including global settings, logging configuration,
+    and sandbox-specific overrides in a formatted, easy-to-read layout.
+
+    Examples:
+        altbuilder config show
+        altbuilder config              # 'show' is the default subcommand
     """
     json_mode = is_json_mode(ctx)
-    params = {"edit": edit, "init": init, "force": force}
     config_path = str(USER_CONFIG_FILE)
-
-    # Handle --init
-    if init:
-        if USER_CONFIG_FILE.exists() and not force:
-            message = f"Config file already exists at {USER_CONFIG_FILE}. Use --force to overwrite."
-            if json_mode:
-                json_response(
-                    ctx,
-                    "error",
-                    params=params,
-                    message=message,
-                    code=1,
-                    config_path=config_path,
-                )
-                return
-            rich_print(f"[yellow]{message}[/yellow]")
-            raise typer.Abort()
-
-        try:
-            initialized = ensure_config_file(force=force)
-        except ConfigError as e:
-            message = f"Failed to initialize config: {e}"
-            if json_mode:
-                json_response(
-                    ctx,
-                    "error",
-                    params=params,
-                    message=message,
-                    code=1,
-                    config_path=config_path,
-                )
-                return
-            rich_print(f"[red]{message}[/red]")
-            raise typer.Abort()
-
-        if json_mode:
-            json_response(
-                ctx,
-                "success",
-                params=params,
-                message=(
-                    f"Generated user-specific config at {USER_CONFIG_FILE}"
-                    if initialized
-                    else "Config file already exists."
-                ),
-                config_path=config_path,
-            )
-        else:
-            if initialized:
-                rich_print(
-                    f"[green]Generated user-specific config at {USER_CONFIG_FILE}[/green]"
-                )
-        return
 
     # Load configuration
     try:
@@ -228,20 +259,216 @@ def config_cmd(
             json_response(
                 ctx,
                 "error",
+                params={},
+                message=message,
+                code=1,
+                config_path=config_path,
+            )
+        else:
+            rich_print(f"[red]{message}[/red]")
+        raise typer.Abort()
+
+    # Display configuration
+    if json_mode:
+        json_response(
+            ctx,
+            "success",
+            params={},
+            config=config,
+            config_path=config.get("config_file", config_path),
+        )
+    else:
+        rich_print(display_config(config))
+
+
+@app.command("init")
+def init_cmd(
+    ctx: typer.Context,
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Force overwrite of existing config file.",
+    ),
+):
+    """Initialize a new configuration file with user-specific defaults.
+
+    Creates ~/.altbuilder/config.toml with sensible defaults personalized for
+    the current user (username, home directory paths, etc.).
+
+    By default, will not overwrite an existing configuration file unless
+    --force is specified.
+
+    Examples:
+        altbuilder config init              # Create new config if none exists
+        altbuilder config init --force      # Overwrite existing config
+    """
+    json_mode = is_json_mode(ctx)
+    params = {"force": force}
+    config_path = str(USER_CONFIG_FILE)
+
+    try:
+        initialized = ensure_config_file(force=force)
+
+        if not initialized and not force:
+            # File already exists and force not specified
+            message = f"Config file already exists at {USER_CONFIG_FILE}. Use --force to overwrite."
+            if json_mode:
+                json_response(
+                    ctx,
+                    "error",
+                    params=params,
+                    message=message,
+                    code=1,
+                    config_path=config_path,
+                )
+            else:
+                rich_print(f"[yellow]{message}[/yellow]")
+            raise typer.Abort()
+
+    except ConfigError as e:
+        message = f"Failed to initialize config: {e}"
+        if json_mode:
+            json_response(
+                ctx,
+                "error",
                 params=params,
                 message=message,
                 code=1,
                 config_path=config_path,
             )
-            return
-        rich_print(f"[red]{message}[/red]")
+        else:
+            rich_print(f"[red]{message}[/red]")
         raise typer.Abort()
 
-    # Handle --edit
-    if edit:
+    message = f"Generated user-specific config at {USER_CONFIG_FILE}"
+    if json_mode:
+        json_response(
+            ctx,
+            "success",
+            params=params,
+            message=message,
+            config_path=config_path,
+        )
+    else:
+        rich_print(f"[green]{message}[/green]")
+
+
+@app.command("edit")
+def edit_cmd(
+    ctx: typer.Context,
+    field: str | None = typer.Option(
+        None,
+        "--field",
+        "-f",
+        help="Specific configuration field to edit (e.g., 'mirror', 'packager').",
+    ),
+    value: str | None = typer.Argument(
+        None,
+        help="New value for the field. Supports environment variable expansion ($VAR, ${VAR}).",
+    ),
+):
+    """Edit the configuration file or a specific field.
+
+    Without --field: Opens the configuration file in your default editor ($EDITOR).
+
+    With --field: Updates a specific configuration field with automatic environment
+    variable expansion. Supports $VAR and ${VAR} syntax.
+
+    Environment variables that are commonly used:
+        $USER, $HOME, $SHELL, etc.
+
+    Examples:
+        altbuilder config edit
+            # Opens config in $EDITOR (vim, nano, etc.)
+
+        altbuilder config edit --field mirror "file:/mnt/repo"
+            # Set mirror to local repository
+
+        altbuilder config edit --field packager "$USER <$USER@altlinux.org>"
+            # Set packager with automatic username expansion
+
+        altbuilder config edit --field environment_dir "$HOME/.altbuilder/environments"
+            # Set environment directory with home directory expansion
+
+        altbuilder config edit --field base_dir "/custom/path"
+            # Set base directory to custom path
+    """
+    json_mode = is_json_mode(ctx)
+    params = {"field": field, "value": value}
+    config_path = str(USER_CONFIG_FILE)
+
+    # Field-specific edit mode
+    if field is not None:
+        if value is None:
+            message = "You must provide a value when using --field option."
+            if json_mode:
+                json_response(
+                    ctx,
+                    "error",
+                    params=params,
+                    message=message,
+                    code=1,
+                    config_path=config_path,
+                )
+            else:
+                rich_print(f"[red]Error: {message}[/red]")
+                rich_print("[yellow]Usage: altbuilder config edit --field <field> <value>[/yellow]")
+            raise typer.Abort()
+
+        # Update the specific field (auto-creates config if needed)
+        try:
+            expanded_value, was_created = update_config_field(field, value)
+        except ConfigError as e:
+            message = str(e)
+            if json_mode:
+                json_response(
+                    ctx,
+                    "error",
+                    params=params,
+                    message=message,
+                    code=1,
+                    config_path=config_path,
+                )
+            else:
+                rich_print(f"[red]Error: {message}[/red]")
+            raise typer.Abort()
+
+        # Field updated successfully
+        if was_created and not json_mode:
+            rich_print(
+                f"[green]Created user-specific config at {USER_CONFIG_FILE}[/green]"
+            )
+
+        message = f"Updated {field} to '{expanded_value}'"
+        if json_mode:
+            extra = {
+                "config_path": config_path,
+                "field": field,
+                "value": expanded_value,
+                "original_value": value,
+            }
+            if was_created:
+                extra["created"] = True
+            json_response(
+                ctx,
+                "success",
+                params=params,
+                message=message,
+                **extra,
+            )
+        else:
+            rich_print(f"[green]{message}[/green]")
+            if value != expanded_value:
+                rich_print(f"[cyan]  Original: {value}[/cyan]")
+                rich_print(f"[cyan]  Expanded: {expanded_value}[/cyan]")
+    
+    # Full file edit mode (when field is None)
+    else:
         # Ensure config file exists
         try:
             initialized = ensure_config_file()
+            created = bool(initialized)
         except ConfigError as e:
             message = f"Failed to ensure config file: {e}"
             if json_mode:
@@ -253,11 +480,9 @@ def config_cmd(
                     code=1,
                     config_path=config_path,
                 )
-                return
-            rich_print(f"[red]{message}[/red]")
+            else:
+                rich_print(f"[red]{message}[/red]")
             raise typer.Abort()
-
-        created = bool(initialized)
         if created and not json_mode:
             rich_print(
                 f"[green]Created user-specific config at {USER_CONFIG_FILE}[/green]"
@@ -280,7 +505,6 @@ def config_cmd(
                 )
             else:
                 rich_print(f"[green]Opened {USER_CONFIG_FILE} in {editor}[/green]")
-            return
         except FileNotFoundError:
             message = (
                 f"Editor '{editor}' not found. Please set $EDITOR or install {editor}."
@@ -297,8 +521,8 @@ def config_cmd(
                     code=1,
                     **extra,
                 )
-                return
-            rich_print(f"[red]{message}[/red]")
+            else:
+                rich_print(f"[red]{message}[/red]")
             raise typer.Abort()
         except subprocess.CalledProcessError as e:
             message = f"Failed to open editor: {e}"
@@ -314,21 +538,9 @@ def config_cmd(
                     code=1,
                     **extra,
                 )
-                return
-            rich_print(f"[red]{message}[/red]")
+            else:
+                rich_print(f"[red]{message}[/red]")
             raise typer.Abort()
-
-    # Default action: Display configuration
-    if json_mode:
-        json_response(
-            ctx,
-            "success",
-            params=params,
-            config=config,
-            config_path=config.get("config_file", config_path),
-        )
-    else:
-        rich_print(display_config(config))
 
 
 if __name__ == "__main__":

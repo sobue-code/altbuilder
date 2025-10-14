@@ -6,7 +6,7 @@ import typer
 from ..config import load_config
 from ..utils.logger import init_logger, logger
 from .clean_cmd import clean_cmd
-from .config_cmd import config_cmd
+from .config_cmd import app as config_app
 from .list_cmd import list_cmd
 from .logs_cmd import logs_cmd
 from .rebuild_cmd import rebuild_cmd
@@ -86,7 +86,7 @@ def main_callback(
 
 
 app.command("list")(list_cmd)
-app.command("config")(config_cmd)
+app.add_typer(config_app, name="config")
 app.command("track")(track_cmd)
 app.command("stop")(stop_cmd)
 app.command("clean")(clean_cmd)

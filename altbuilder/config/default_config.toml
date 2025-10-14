@@ -1,6 +1,8 @@
 branch = "Sisyphus"
 arch = "x86_64"
 mirror = "http://ftp.altlinux.org/pub/distributions"
+# Alternative: use local repository mirror
+# mirror = "file:/mnt/repo"
 mirror_task = "http://git.altlinux.org"
 rdb_url= "https://rdb.altlinux.org"
 packager = "User <user@altlinux.org>"
