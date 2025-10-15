@@ -13,6 +13,35 @@ from altbuilder.config import load_config
 from altbuilder.exceptions import RemoteError
 
 
+def parse_package_version_release(filename: str) -> Tuple[Optional[str], Optional[str]]:
+    """Parse version and release from package filename.
+    
+    Args:
+        filename (str): Package filename (e.g., 'python3-module-glpi-api-1.0.0-alt1.src.rpm').
+        
+    Returns:
+        Tuple[Optional[str], Optional[str]]: Tuple of (version, release).
+    """
+    # Pattern to match package name, version, and release
+    # This pattern captures everything after the first dash as version, and everything before .src.rpm as release
+    pattern = r'^[^-]+-(.+)-([^.]+)\.src\.rpm$'
+    match = re.match(pattern, filename)
+    if match:
+        version = match.group(1)
+        release = match.group(2)
+        
+        # For packages like 'python3-module-glpi-api-0.7.0-alt1.src.rpm'
+        # We need to extract just the version part (0.7.0) from the captured group
+        # The captured group might contain the full package name, so we need to extract the last part
+        version_parts = version.split('-')
+        if len(version_parts) > 1:
+            # If there are multiple dashes, take the last part as version
+            version = version_parts[-1]
+        
+        return version, release
+    return None, None
+
+
 class RemoteRepository:
     """Handles operations with git.altlinux.org gears, srpms repositories, and ALT Linux package repositories."""
 
@@ -280,25 +309,30 @@ class RemoteRepository:
             raise RemoteError(f"Invalid mirror type: {mirror}")
 
     def find_src_rpm(
-        self, package_name: str, mirror: str, branch: str
-    ) -> Tuple[Optional[str], Optional[str]]:
-        """Search for the latest src.rpm file for a package in the specified repository.
+        self, package_name: str, mirror: str, branch: str, version: Optional[str] = None, release: Optional[str] = None
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """Search for a src.rpm file for a package in the specified repository.
 
         Args:
             package_name (str): Name of the package (e.g., 'python3-module-glpi-api').
             mirror (str): Repository mirror URL (e.g., 'http://mirror.altlinux.org' or 'file:/path/to/repo').
             branch (str): Branch name (e.g., 'Sisyphus').
+            version (Optional[str]): Specific version to search for. If None, finds the latest.
+            release (Optional[str]): Specific release to search for. If None, finds the latest.
 
         Returns:
-            Tuple[Optional[str], Optional[str]]: Tuple of (src_rpm_url_or_path, src_rpm_filename).
-            Returns (None, None) if no matching src.rpm is found.
+            Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]: Tuple of 
+            (src_rpm_url_or_path, src_rpm_filename, found_version, found_release).
+            Returns (None, None, None, None) if no matching src.rpm is found.
 
         Raises:
             RemoteError: If the repository is inaccessible or the search fails.
         """
-        logger.info(
-            f"Searching for src.rpm for {package_name} in {mirror} (branch: {branch})"
-        )
+        search_msg = f"Searching for src.rpm for {package_name} in {mirror} (branch: {branch})"
+        if version or release:
+            search_msg += f" (version: {version or 'any'}, release: {release or 'any'})"
+        logger.info(search_msg)
+        
         repo_url = self.get_package_repo_url(mirror, branch)
 
         pattern = re.compile(
@@ -314,10 +348,36 @@ class RemoteRepository:
                     logger.warning(
                         f"No src.rpm found for {package_name} in {local_repo_path}"
                     )
-                    return None, None
+                    return None, None, None, None
+                
+                # Filter by version and release if specified
+                filtered_files = []
+                for filename in matching_files:
+                    file_version, file_release = parse_package_version_release(filename)
+                    if file_version and file_release:
+                        version_match = version is None or file_version == version
+                        release_match = release is None or file_release == release
+                        if version_match and release_match:
+                            filtered_files.append((filename, file_version, file_release))
+                
+                if not filtered_files:
+                    # Return the latest file with its version/release for error reporting
+                    latest_file = matching_files[-1]
+                    latest_version, latest_release = parse_package_version_release(latest_file)
+                    return (
+                        os.path.join(local_repo_path, latest_file),
+                        latest_file,
+                        latest_version,
+                        latest_release,
+                    )
+                
+                # Return the latest matching file
+                latest_match = filtered_files[-1]
                 return (
-                    os.path.join(local_repo_path, matching_files[-1]),
-                    matching_files[-1],
+                    os.path.join(local_repo_path, latest_match[0]),
+                    latest_match[0],
+                    latest_match[1],
+                    latest_match[2],
                 )
             except (FileNotFoundError, PermissionError) as e:
                 logger.error(f"Failed to access local repository {local_repo_path}: {e}")
@@ -331,8 +391,37 @@ class RemoteRepository:
             matching_files = sorted([f for f in links if pattern.match(f)])
             if not matching_files:
                 logger.warning(f"No src.rpm found for {package_name} at {repo_url}")
-                return None, None
-            return repo_url + matching_files[-1], matching_files[-1]
+                return None, None, None, None
+            
+            # Filter by version and release if specified
+            filtered_files = []
+            for filename in matching_files:
+                file_version, file_release = parse_package_version_release(filename)
+                if file_version and file_release:
+                    version_match = version is None or file_version == version
+                    release_match = release is None or file_release == release
+                    if version_match and release_match:
+                        filtered_files.append((filename, file_version, file_release))
+            
+            if not filtered_files:
+                # Return the latest file with its version/release for error reporting
+                latest_file = matching_files[-1]
+                latest_version, latest_release = parse_package_version_release(latest_file)
+                return (
+                    repo_url + latest_file,
+                    latest_file,
+                    latest_version,
+                    latest_release,
+                )
+            
+            # Return the latest matching file
+            latest_match = filtered_files[-1]
+            return (
+                repo_url + latest_match[0],
+                latest_match[0],
+                latest_match[1],
+                latest_match[2],
+            )
         except requests.RequestException as e:
             logger.error(f"Failed to access remote repository {repo_url}: {e}")
             raise RemoteError(f"Failed to access remote repository {repo_url}: {e}")

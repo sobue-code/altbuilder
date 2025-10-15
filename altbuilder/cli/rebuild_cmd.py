@@ -18,6 +18,8 @@ CLI_ERROR_EXIT_CODE = 1
 REBUILD_FAILURE_EXIT_CODE = 2
 DEFAULT_ERROR_TYPE = "altbuilder_error"
 REBUILD_ERROR_TYPE = "rebuild_failed"
+VERSION_MISMATCH_ERROR_TYPE = "version_mismatch"
+PACKAGE_NOT_FOUND_ERROR_TYPE = "package_not_found"
 
 
 app = typer.Typer(
@@ -84,6 +86,17 @@ def rebuild_cmd(
         "-c",
         help="Clean sandbox after rebuild.",
     ),
+    version: str = typer.Option(
+        None,
+        "--version",
+        "-v",
+        help="Specific version to check for (e.g., 1.0.0). If specified, the package version must match exactly.",
+    ),
+    release: str = typer.Option(
+        None,
+        "--release",
+        help="Specific release to check for (e.g., alt1). If specified, the package release must match exactly.",
+    ),
 ):
     """Rebuild a package by fetching its corresponding src.rpm and building it in sandbox."""
     json_mode = is_json_mode(ctx)
@@ -98,6 +111,8 @@ def rebuild_cmd(
         "no_check": no_check,
         "rpmbuild_extra": rpmbuild_extra,
         "autoclean": autoclean,
+        "version": version,
+        "release": release,
     }
     log_path = None
 
@@ -187,12 +202,13 @@ def rebuild_cmd(
     temp_file, src_rpm_path = None, None
     try:
         remote_repo = RemoteRepository(config)
-        src_rpm_url_or_path, src_rpm_filename = remote_repo.find_src_rpm(
-            package_name, mirror, sandbox_branch
+        src_rpm_url_or_path, src_rpm_filename, found_version, found_release = remote_repo.find_src_rpm(
+            package_name, mirror, sandbox_branch, version, release
         )
         if not src_rpm_url_or_path or not src_rpm_filename:
             emit_error(
-                f"No matching src.rpm found for {package_name} in {mirror} (branch: {sandbox_branch})."
+                f"No matching src.rpm found for {package_name} in {mirror} (branch: {sandbox_branch}).",
+                error_type=PACKAGE_NOT_FOUND_ERROR_TYPE,
             )
 
         if mirror.startswith("file:"):
@@ -204,6 +220,41 @@ def rebuild_cmd(
             src_rpm_path = temp_file
         else:
             emit_error(f"Unsupported mirror type: {mirror}")
+
+        # Check version and release if specified
+        if version or release:
+            if found_version is None or found_release is None:
+                # Try to get version/release from spec file as fallback
+                meta_name, spec_version, spec_release = get_spec_metadata(src_rpm_path, is_src_rpm=True)
+                if spec_version and spec_release:
+                    found_version = spec_version
+                    found_release = spec_release
+            
+            version_mismatch = False
+            version_error_msg = ""
+            
+            if version and found_version != version:
+                version_mismatch = True
+                version_error_msg += f"Version mismatch: requested '{version}', found '{found_version}'"
+            
+            if release and found_release != release:
+                version_mismatch = True
+                if version_error_msg:
+                    version_error_msg += "; "
+                version_error_msg += f"Release mismatch: requested '{release}', found '{found_release}'"
+            
+            if version_mismatch:
+                error_msg = f"Package {package_name} found but {version_error_msg}."
+                emit_error(
+                    error_msg,
+                    error_type=VERSION_MISMATCH_ERROR_TYPE,
+                    extra={
+                        "requested_version": version,
+                        "requested_release": release,
+                        "found_version": found_version,
+                        "found_release": found_release,
+                    }
+                )
 
         meta_name, version, release = get_spec_metadata(src_rpm_path, is_src_rpm=True)
         if not meta_name:
