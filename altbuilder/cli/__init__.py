@@ -27,6 +27,7 @@ from .stop_cmd import stop_cmd
 from .track_cmd import track_cmd
 from .update_submodules_cmd import update_submodules
 from .git_alt_cmd import git_alt_cmd
+from .vendor_cmd import vendor_app
 
 app = typer.Typer(
     name="altbuilder",
@@ -114,14 +115,16 @@ app.command("logs")(logs_cmd)
 app.command("build")(build_cmd)
 app.command("rebuild")(rebuild_cmd)
 app.command("copy-pyproject-deps")(copy_pyproject_deps)
-app.command("rust-update-vendor")(rust_update_vendor)
-app.command("go-update-vendor")(go_update_vendor)
-app.command("npm-update-vendor")(npm_update_vendor)
+# Legacy vendor commands (deprecated, use 'vendor' subcommand instead)
+app.command("rust-update-vendor", deprecated=True)(rust_update_vendor)
+app.command("go-update-vendor", deprecated=True)(go_update_vendor)
+app.command("npm-update-vendor", deprecated=True)(npm_update_vendor)
 app.command("update-submodules")(update_submodules)
 app.command("merge-tag")(merge_tag)
 app.command("rpmdiff")(rpmdiff_cmd)
 app.command("git.alt")(git_alt_cmd)
 app.add_typer(copy_app, name="copy")
+app.add_typer(vendor_app, name="vendor")
 
 if __name__ == "__main__":
     app()
