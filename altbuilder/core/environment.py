@@ -117,6 +117,13 @@ Debug::pkgProblemResolver "true";
         self._generate_priorities()
         self._generate_apt_conf()
 
+    def prepare(self):
+        """Create sandbox layout and regenerate configuration files."""
+        logger.info(f"Preparing sandbox configuration files for {self.name}")
+        os.makedirs(self.hasher_dir, exist_ok=True)
+        self._generate_config_files()
+        self.serialize()
+
     def init(self, log_dir=None):
         """Initialize the sandbox with preliminary generation of configuration files."""
         logger.info(f"Initializing sandbox: {self.name}")

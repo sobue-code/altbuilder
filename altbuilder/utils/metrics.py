@@ -22,8 +22,12 @@ class Metrics:
             return False
 
     @contextmanager
-    def track_build(self, package_name, build_log_dir=None, sandbox_name=None, command="build", version=None, release=None):
-        """Track a package build process, saving temporary and result JSON files."""
+    def track_build(self, package_name, build_log_dir=None, sandbox_name=None, command="build", version=None, release=None, rebuild_id=None):
+        """Track a package build process, saving temporary and result JSON files.
+
+        Optionally attach a ``rebuild_id`` so downstream consumers can correlate
+        rebuild attempts.
+        """
         if not self.base_dir:
             raise ValueError("base_dir is required for tracking builds")
 
@@ -79,6 +83,8 @@ class Metrics:
                 "version": version or "unknown",
                 "release": release or "unknown",
             }
+            if rebuild_id:
+                temp_result["rebuild_id"] = rebuild_id
             with open(temp_result_path, "w") as f:
                 json.dump(temp_result, f, indent=2)
 
@@ -106,6 +112,8 @@ class Metrics:
                     "version": version or "unknown",
                     "release": release or "unknown",
                 }
+                if rebuild_id:
+                    result["rebuild_id"] = rebuild_id
                 os.makedirs(build_log_dir, exist_ok=True)
                 result_json_path = os.path.join(build_log_dir, "build_result.json")
                 with open(result_json_path, "w") as f:

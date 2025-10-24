@@ -18,6 +18,8 @@ CLI_ERROR_EXIT_CODE = 1
 REBUILD_FAILURE_EXIT_CODE = 2
 DEFAULT_ERROR_TYPE = "altbuilder_error"
 REBUILD_ERROR_TYPE = "rebuild_failed"
+VERSION_MISMATCH_ERROR_TYPE = "version_mismatch"
+PACKAGE_NOT_FOUND_ERROR_TYPE = "package_not_found"
 
 app = typer.Typer(
     name="rebuild",
@@ -56,6 +58,11 @@ def rebuild_cmd(
         "-t",
         help="Attach task repository by ID.",
     ),
+    rebuild_id: str = typer.Option(
+        None,
+        "--rebuild-id",
+        help="Unique identifier for the rebuild operation.",
+    ),
     reinit: bool = typer.Option(
         False,
         "--reinit",
@@ -72,6 +79,23 @@ def rebuild_cmd(
         "--rpmbuild-extra",
         help="Extra flags to pass to rpmbuild (via --rpmbuild-args).",
     ),
+    autoclean: bool = typer.Option(
+        False,
+        "--autoclean",
+        "-c",
+        help="Clean sandbox after rebuild.",
+    ),
+    version: str = typer.Option(
+        None,
+        "--version",
+        "-v",
+        help="Specific version to check for (e.g., 1.0.0). If specified, the package version must match exactly.",
+    ),
+    release: str = typer.Option(
+        None,
+        "--release",
+        help="Specific release to check for (e.g., alt1). If specified, the package release must match exactly.",
+    ),
 ):
     """Rebuild a package by fetching its corresponding src.rpm and building it in sandbox."""
     json_mode = is_json_mode(ctx)
@@ -81,12 +105,15 @@ def rebuild_cmd(
         "branch": branch,
         "arch": arch,
         "task": task,
+        "rebuild_id": rebuild_id,
         "reinit": reinit,
         "no_check": no_check,
         "rpmbuild_extra": rpmbuild_extra,
+        "autoclean": autoclean,
+        "version": version,
+        "release": release,
     }
     log_path = None
-    build_started = False
 
     def emit_error(
         message: str,
@@ -115,7 +142,8 @@ def rebuild_cmd(
             rich_print(f"[red]{message}[/red]")
             raise typer.Exit(code=code)
 
-    # Load config
+    build_started = False
+
     try:
         config = load_config()
     except Exception as e:
@@ -127,22 +155,16 @@ def rebuild_cmd(
         nonlocal task_branch_hint
         if sandbox:
             return sandbox
-
         branch_candidate = branch.strip() if branch else None
         arch_candidate = arch.strip() if arch else None
-
         if task and not branch_candidate:
             if task_branch_hint is None:
                 info = fetch_task_info(task, config["rdb_url"])
-                task_branch_hint = (
-                    (info.get("branch") or "").strip() if info else ""
-                )
+                task_branch_hint = (info.get("branch") or "").strip() if info else ""
             if task_branch_hint:
                 branch_candidate = task_branch_hint
-
         branch_candidate = branch_candidate or config.get("branch", "Sisyphus")
         arch_candidate = arch_candidate or config.get("arch", "x86_64")
-
         return derive_sandbox_name(branch_candidate, arch_candidate, task)
 
     try:
@@ -153,6 +175,7 @@ def rebuild_cmd(
             reinit,
             config,
             task_id=task,
+            skip_hsh_init=True,
         )
     except Exception as e:
         resolved_sandbox_name = resolve_sandbox_name_hint()
@@ -177,19 +200,15 @@ def rebuild_cmd(
 
     temp_file, src_rpm_path = None, None
     try:
-        # Initialize RemoteRepository
         remote_repo = RemoteRepository(config)
-
-        # Search for src.rpm using RemoteRepository
-        src_rpm_url_or_path, src_rpm_filename = remote_repo.find_src_rpm(
-            package_name, mirror, sandbox_branch
+        src_rpm_url_or_path, src_rpm_filename, found_version, found_release = remote_repo.find_src_rpm(
+            package_name, mirror, sandbox_branch, version, release
         )
         if not src_rpm_url_or_path or not src_rpm_filename:
             emit_error(
-                f"No matching src.rpm found for {package_name} in {mirror} (branch: {sandbox_branch})."
+                f"No matching src.rpm found for {package_name} in {mirror} (branch: {sandbox_branch}).",
+                error_type=PACKAGE_NOT_FOUND_ERROR_TYPE,
             )
-
-        # Handle local or remote src.rpm
         if mirror.startswith("file:"):
             src_rpm_path = src_rpm_url_or_path
         elif mirror.startswith("http"):
@@ -200,21 +219,54 @@ def rebuild_cmd(
         else:
             emit_error(f"Unsupported mirror type: {mirror}")
 
-        # Metadata
+        # Check version and release if specified
+        if version or release:
+            if found_version is None or found_release is None:
+                # Try to get version/release from spec file as fallback
+                meta_name, spec_version, spec_release = get_spec_metadata(src_rpm_path, is_src_rpm=True)
+                if spec_version and spec_release:
+                    found_version = spec_version
+                    found_release = spec_release
+
+            version_mismatch = False
+            version_error_msg = ""
+
+            if version and found_version != version:
+                version_mismatch = True
+                version_error_msg += f"Version mismatch: requested '{version}', found '{found_version}'"
+
+            if release and found_release != release:
+                version_mismatch = True
+                if version_error_msg:
+                    version_error_msg += "; "
+                version_error_msg += f"Release mismatch: requested '{release}', found '{found_release}'"
+
+            if version_mismatch:
+                error_msg = f"Package {package_name} found but {version_error_msg}."
+                emit_error(
+                    error_msg,
+                    error_type=VERSION_MISMATCH_ERROR_TYPE,
+                    extra={
+                        "requested_version": version,
+                        "requested_release": release,
+                        "found_version": found_version,
+                        "found_release": found_release,
+                    }
+                )
+
         meta_name, version, release = get_spec_metadata(src_rpm_path, is_src_rpm=True)
         if not meta_name:
             meta_name = os.path.basename(src_rpm_path).replace(".src.rpm", "")
             version, release = "unknown", "unknown"
 
+        rebuild_suffix = f" [rebuild id: {rebuild_id}]" if rebuild_id else ""
         rebuild_message = (
             f"Rebuilding package: {meta_name} (Version: {version}, Release: {release}) "
-            f"in sandbox: {sandbox_name}"
+            f"in sandbox: {sandbox_name}{rebuild_suffix}"
         )
         logger.info(rebuild_message)
         if not json_mode:
             rich_print(f"[bold]{rebuild_message}[/bold]")
-
-        # Build log dir
         log_dir = os.path.join(
             sandbox_config["build_logs_dir"], sandbox_name, meta_name
         )
@@ -223,11 +275,12 @@ def rebuild_cmd(
             build_number += 1
         build_log_dir = os.path.join(log_dir, f"build_{build_number}")
         os.makedirs(build_log_dir, exist_ok=True)
+        log_path = build_log_dir
 
         hasher = HasherAdapter(base_dir=config.get("base_dir"))
         builder = BuildManager(env, hasher_adapter=hasher)
         build_started = True
-        log_path = builder.build(
+        builder.build(
             build_target=src_rpm_path,
             is_src_rpm=True,
             apt_conf=None,
@@ -237,7 +290,21 @@ def rebuild_cmd(
             hsh_extra="",
             rpmbuild_extra=rpmbuild_extra,
             command="rebuild",
+            rebuild_id=rebuild_id,
         )
+
+        if autoclean:
+            try:
+                env.clean()
+                logger.info(f"Sandbox {sandbox_name} cleaned after rebuild")
+                if not json_mode:
+                    rich_print(
+                        f"[green]Sandbox {sandbox_name} cleaned after rebuild.[/green]"
+                    )
+            except (subprocess.CalledProcessError, OSError) as e:
+                logger.error(f"Autoclean failed for sandbox {sandbox_name}: {e}")
+                if not json_mode:
+                    rich_print(f"[red]Autoclean failed for {sandbox_name}: {e}[/red]")
 
         if json_mode:
             json_response(
@@ -251,12 +318,13 @@ def rebuild_cmd(
                     "release": release,
                 },
                 sandbox=sandbox_name,
+                rebuild_id=rebuild_id,
             )
             return
         else:
             success_message = (
                 f"Successfully rebuilt {meta_name} (Version: {version}, Release: {release}) "
-                f"(sandbox: {sandbox_name})."
+                f"(sandbox: {sandbox_name}){rebuild_suffix}."
             )
             rich_print(f"[green]{success_message}[/green]")
 
