@@ -24,8 +24,14 @@ def copy_pyproject_deps(
         "-f",
         help="Force commit of pyproject_deps.json without confirmation prompt.",
     ),
+    output: str = typer.Option(
+        ".gear/pyproject_deps.json",
+        "--output",
+        "-o",
+        help="Output path for the pyproject_deps.json file. Defaults to .gear/pyproject_deps.json",
+    ),
 ):
-    """Copy pyproject_deps.json from sandbox to .gear/ directory."""
+    """Copy pyproject_deps.json from sandbox to specified output path."""
     config = load_config()
     sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
     sandbox_config = get_sandbox_config(sandbox_name, config)
@@ -36,7 +42,14 @@ def copy_pyproject_deps(
         logger.warning(f"Sandbox {sandbox_name} does not exist, initializing...")
         env.init()
 
-    logger.info(f"Copying pyproject_deps.json from sandbox {sandbox_name} to .gear/")
+    # Handle case where output is a directory - append default filename
+    if output.endswith('/') or (os.path.exists(output) and os.path.isdir(output)):
+        output = os.path.join(output, "pyproject_deps.json")
+    elif not output.endswith('.json') and not os.path.splitext(output)[1]:
+        # If no extension provided, assume it's a directory and append filename
+        output = os.path.join(output, "pyproject_deps.json")
+
+    logger.info(f"Copying pyproject_deps.json from sandbox {sandbox_name} to {output}")
     cmd = [
         "hsh-run",
         "--mountpoints=/proc",
@@ -47,91 +60,128 @@ def copy_pyproject_deps(
         'cat "$(rpm --eval %pyproject_deps_config)"',
     ]
     try:
-        os.makedirs(".gear", exist_ok=True)
-        with open(".gear/pyproject_deps.json", "w") as f:
+        # Create output directory if it doesn't exist
+        output_dir = os.path.dirname(output)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        with open(output, "w") as f:
             subprocess.run(cmd, stdout=f, check=True)
 
-        # Check if pyproject_deps.json is already tracked in git
-        pyproject_tracked = False
+        # Check if we're in a git repository
+        git_available = True
         try:
-            subprocess.run(
-                ["git", "ls-files", ".gear/pyproject_deps.json"],
-                capture_output=True,
-                check=True,
-                text=True,
-            )
-            pyproject_tracked = True
-        except subprocess.CalledProcessError:
+            subprocess.run(["git", "status"], capture_output=True, check=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            git_available = False
+            logger.info("Not in a git repository, skipping git operations")
+
+        if git_available:
+            # Check if pyproject_deps.json is already tracked in git
+            pyproject_tracked = False
+            try:
+                subprocess.run(
+                    ["git", "ls-files", output],
+                    capture_output=True,
+                    check=True,
+                    text=True,
+                )
+                pyproject_tracked = True
+            except subprocess.CalledProcessError:
+                pyproject_tracked = False
+
+            # Stage the pyproject_deps.json file
+            try:
+                subprocess.run(["git", "add", output], check=True)
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Failed to stage file in git: {e}")
+                logger.info("File copied successfully, but git operations failed")
+                rich_print(f"[yellow]File copied successfully, but git operations failed: {e}[/yellow]")
+                return
+
+            # Check if there are changes to commit
+            try:
+                status_proc = subprocess.run(
+                    ["git", "status", "--porcelain", output],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                has_changes = bool(status_proc.stdout.strip())
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Failed to check git status: {e}")
+                has_changes = False
+        else:
+            has_changes = False
             pyproject_tracked = False
 
-        # Stage the pyproject_deps.json file
-        subprocess.run(["git", "add", ".gear/pyproject_deps.json"], check=True)
-
-        # Check if there are changes to commit
-        status_proc = subprocess.run(
-            ["git", "status", "--porcelain", ".gear/pyproject_deps.json"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        has_changes = bool(status_proc.stdout.strip())
-
         # Commit logic: prompt for confirmation unless force_commit is True
-        commit_message = "Update pyproject_deps.json" if pyproject_tracked else "Add pyproject_deps.json"
-        if has_changes:
-            if force_commit:
-                subprocess.run(["git", "commit", "-m", commit_message], check=True)
-                logger.info(
-                    f"pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}"
-                )
-                rich_print(
-                    f"[green]pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}[/green]"
-                )
-            elif typer.confirm(
-                f"Commit changes to pyproject_deps.json with message '{commit_message}'?",
-                default=True,
-            ):
-                subprocess.run(["git", "commit", "-m", commit_message], check=True)
-                logger.info(
-                    f"pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}"
-                )
-                rich_print(
-                    f"[green]pyproject_deps.json {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}[/green]"
-                )
-            else:
-                logger.info(
-                    f"""pyproject_deps.json added to git index but not committed in sandbox {sandbox_name}.
-                    Don't forget to add this line to your .gear/rules file:
-
-                    copy: .gear/pyproject_deps.json
-
-                    And this to your .spec:
-
-                    SourceX: %pyproject_deps_config_name
-                    """
-                )
-                rich_print(
-                    f"""[yellow]pyproject_deps.json added to git index but not committed in sandbox {sandbox_name}.
+        if git_available:
+            commit_message = f"Update {os.path.basename(output)}" if pyproject_tracked else f"Add {os.path.basename(output)}"
+            if has_changes:
+                if force_commit:
+                    try:
+                        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+                        logger.info(
+                            f"{os.path.basename(output)} {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}"
+                        )
+                        rich_print(
+                            f"[green]{os.path.basename(output)} {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}[/green]"
+                        )
+                    except subprocess.CalledProcessError as e:
+                        logger.warning(f"Failed to commit changes: {e}")
+                        rich_print(f"[yellow]File copied but commit failed: {e}[/yellow]")
+                elif typer.confirm(
+                    f"Commit changes to {os.path.basename(output)} with message '{commit_message}'?",
+                    default=True,
+                ):
+                    try:
+                        subprocess.run(["git", "commit", "-m", commit_message], check=True)
+                        logger.info(
+                            f"{os.path.basename(output)} {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}"
+                        )
+                        rich_print(
+                            f"[green]{os.path.basename(output)} {'updated and committed' if pyproject_tracked else 'added and committed'} in sandbox {sandbox_name}[/green]"
+                        )
+                    except subprocess.CalledProcessError as e:
+                        logger.warning(f"Failed to commit changes: {e}")
+                        rich_print(f"[yellow]File copied but commit failed: {e}[/yellow]")
+                else:
+                    logger.info(
+                        f"""{os.path.basename(output)} added to git index but not committed in sandbox {sandbox_name}.
                         Don't forget to add this line to your .gear/rules file:
 
-                        copy: .gear/pyproject_deps.json
+                        copy: {output}
 
                         And this to your .spec:
 
                         SourceX: %pyproject_deps_config_name
-                        [/yellow]"""
+                        """
+                    )
+                    rich_print(
+                        f"""[yellow]{os.path.basename(output)} added to git index but not committed in sandbox {sandbox_name}.
+                            Don't forget to add this line to your .gear/rules file:
+
+                            copy: {output}
+
+                            And this to your .spec:
+
+                            SourceX: %pyproject_deps_config_name
+                            [/yellow]"""
+                    )
+            else:
+                logger.info(f"{os.path.basename(output)} is unchanged in sandbox {sandbox_name}, no commit needed")
+                rich_print(
+                    f"[yellow]{os.path.basename(output)} is unchanged in sandbox {sandbox_name}, no commit needed[/yellow]"
                 )
         else:
-            logger.info(f"pyproject_deps.json is unchanged in sandbox {sandbox_name}, no commit needed")
-            rich_print(
-                f"[yellow]pyproject_deps.json is unchanged in sandbox {sandbox_name}, no commit needed[/yellow]"
-            )
+            logger.info(f"{os.path.basename(output)} copied successfully (not in git repository)")
+            rich_print(f"[green]{os.path.basename(output)} copied successfully (not in git repository)[/green]")
 
-        rich_print("[green]pyproject_deps.json copied to .gear/[/green]")
-        logger.info(f"pyproject_deps.json copied to .gear/ in sandbox {sandbox_name}")
+        rich_print(f"[green]{os.path.basename(output)} copied to {output}[/green]")
+        logger.info(f"{os.path.basename(output)} copied to {output} in sandbox {sandbox_name}")
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to copy or stage pyproject_deps.json: {e}")
-        rich_print(f"[red]Failed to copy or stage pyproject_deps.json: {e}[/red]")
+        logger.error(f"Failed to copy or stage {os.path.basename(output)}: {e}")
+        rich_print(f"[red]Failed to copy or stage {os.path.basename(output)}: {e}[/red]")
         raise typer.Exit(code=1)
 
 
