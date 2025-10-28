@@ -181,7 +181,7 @@ def rust(
         clone_dir="package_rust",
         vendor_cmd="cargo vendor;",
         vendor_source_path="/usr/src/package_rust/vendor",
-        vendor_dest_path="./vendor",
+        vendor_dest_path=".",
         gear_rules_hint="tar: vendor name=vendor",
         spec_hint=" SourceX: vendor.tar\n\n%setup -a X",
         sandbox=sandbox,
@@ -217,7 +217,7 @@ def go(
         mkdir -p vendor;
         go mod vendor;""",
         vendor_source_path="/usr/src/package_go/vendor",
-        vendor_dest_path="./vendor",
+        vendor_dest_path=".",
         gear_rules_hint="tar: vendor name=vendor",
         spec_hint=" SourceX: vendor.tar\n\n%setup -a X",
         sandbox=sandbox,
@@ -255,7 +255,7 @@ def npm(
             npm install;
         fi""",
         vendor_source_path="/usr/src/package_nodejs/node_modules",
-        vendor_dest_path="./node_modules",
+        vendor_dest_path=".",
         gear_rules_hint="tar: node_modules name=node_modules",
         spec_hint=" SourceX: node_modules.tar\n\n%setup -a X",
         sandbox=sandbox,

@@ -412,8 +412,14 @@ Debug::pkgProblemResolver "true";
 
         try:
             # Ensure destination directory exists
-            dst_dir = os.path.dirname(dst) if os.path.basename(dst) else dst
-            os.makedirs(dst_dir, exist_ok=True)
+            # Handle "." as current directory
+            if dst == ".":
+                dst_dir = "."
+            else:
+                dst_dir = os.path.dirname(dst) if os.path.basename(dst) else dst
+            
+            if dst_dir and dst_dir != ".":
+                os.makedirs(dst_dir, exist_ok=True)
 
             # Use tar to copy both files and directories
             cmd = [
