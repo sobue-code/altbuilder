@@ -1,5 +1,6 @@
 import os
 import subprocess
+from pathlib import Path
 
 import typer
 from rich import print as rich_print
@@ -8,6 +9,11 @@ from altbuilder.config import get_sandbox_config, load_config
 from altbuilder.core.environment import Environment
 from altbuilder.utils import init_logger, logger
 from altbuilder.utils.metrics import Metrics
+from altbuilder.utils.vendor_cleanup import (
+    CleanupOptions,
+    VendorCleaner,
+    show_vendor_stats,
+)
 
 vendor_app = typer.Typer(
     name="vendor",
@@ -100,21 +106,28 @@ def _update_vendor_common(
     try:
         env.copy_from(vendor_source_path, vendor_dest_path)
 
-        # Check if vendor directory is already tracked in git
+        # Check if vendor directory exists in the previous commit (HEAD)
+        # Note: vendor_dest_path might be "." (current dir), so we need to check "vendor" specifically
+        vendor_check_path = "vendor" if vendor_dest_path == "." else vendor_dest_path
         vendor_tracked = False
         try:
-            subprocess.run(
-                ["git", "ls-files", vendor_dest_path],
+            result = subprocess.run(
+                ["git", "ls-tree", "-r", "--name-only", "HEAD", vendor_check_path],
                 capture_output=True,
-                check=True,
                 text=True,
+                check=False,  # Don't fail if HEAD doesn't exist or vendor not in HEAD
             )
-            vendor_tracked = True
-        except subprocess.CalledProcessError:
+            # Check if there's any output (files in HEAD)
+            vendor_tracked = bool(result.stdout.strip())
+        except Exception:
             vendor_tracked = False
 
-        # Stage the vendor directory
-        subprocess.run(["git", "add", vendor_dest_path], check=True)
+        # Stage the vendor directory (force to ignore .gitignore rules)
+        # Use -f to ensure ALL vendor files are added, even if matched by .gitignore
+        if vendor_dest_path == ".":
+            subprocess.run(["git", "add", "-f", "vendor"], check=True)
+        else:
+            subprocess.run(["git", "add", "-f", vendor_dest_path], check=True)
 
         # Check if there are staged changes
         diff_result = subprocess.run(
@@ -128,10 +141,11 @@ def _update_vendor_common(
             )
             logger.info(f"{language} vendor dependencies up to date, no commit created.")
         else:
+            # Simple commit message
             commit_message = (
-                f"Update {language} dependencies"
+                f"Update {language} vendor dependencies"
                 if vendor_tracked
-                else f"Vendoring {language} dependencies"
+                else f"Add vendored {language} dependencies"
             )
             subprocess.run(["git", "commit", "-m", commit_message], check=True)
 
@@ -171,23 +185,201 @@ def rust(
         "-r",
         help="Reinitialize sandbox if it already exists.",
     ),
+    cleanup: bool = typer.Option(
+        False,
+        "--cleanup",
+        "-c",
+        help="Clean up vendor directory (remove binaries, Windows crates, update checksums)",
+    ),
+    use_filterer: bool = typer.Option(
+        True,
+        "--filterer/--no-filterer",
+        help="Use cargo-vendor-alt for platform filtering (default: True)",
+    ),
+    keep_windows: bool = typer.Option(
+        False,
+        "--keep-windows",
+        help="Keep Windows-specific crates (by default removed for Linux-only packages)",
+    ),
+    stats: bool = typer.Option(
+        True,
+        "--stats/--no-stats",
+        help="Show vendor directory statistics (default: True)",
+    ),
+    verbose_commit: bool = typer.Option(
+        False,
+        "--verbose-commit",
+        help="Include detailed cleanup information in commit message",
+    ),
 ):
-    """Update Rust vendor dependencies."""
+    """Update Rust vendor dependencies with optional cleanup and optimization."""
     sandbox = ctx.obj.get("sandbox")
+
+    # Determine vendoring command based on filterer flag
+    if use_filterer:
+        vendor_cmd = "cargo-vendor-alt || cargo vendor;"
+        packages = ["rust-cargo", "cargo-vendor-filterer", "git"]
+        rich_print(
+            "[cyan]Using cargo-vendor-alt for platform-specific filtering[/cyan]"
+        )
+    else:
+        vendor_cmd = "cargo vendor;"
+        packages = ["rust-cargo", "git"]
+
+    # Check if this is first vendor addition (before running vendor command)
+    vendor_tracked = False
+    try:
+        result = subprocess.run(
+            ["git", "ls-tree", "-r", "--name-only", "HEAD", "vendor"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        vendor_tracked = bool(result.stdout.strip())
+    except Exception:
+        vendor_tracked = False
 
     _update_vendor_common(
         language="Rust",
-        packages=["rust-cargo", "git"],
+        packages=packages,
         clone_dir="package_rust",
-        vendor_cmd="cargo vendor;",
+        vendor_cmd=vendor_cmd,
         vendor_source_path="/usr/src/package_rust/vendor",
-        vendor_dest_path=".",
+        vendor_dest_path=".",  # Extract to current directory (creates ./vendor/)
         gear_rules_hint="tar: vendor name=vendor",
         spec_hint=" SourceX: vendor.tar\n\n%setup -a X",
         sandbox=sandbox,
         reinit=reinit,
         tag=tag,
     )
+
+    # POST-PROCESSING: Statistics and cleanup
+    vendor_path = Path(".") / "vendor"
+
+    if not vendor_path.exists():
+        logger.warning("Vendor directory not found, skipping post-processing")
+        return
+
+    # Show statistics before cleanup
+    if stats:
+        rich_print("\n[cyan]=== Vendor Statistics (Before Cleanup) ===[/cyan]\n")
+        show_vendor_stats(str(vendor_path), "Initial Vendor Directory")
+
+    # Perform cleanup if requested
+    if cleanup:
+        rich_print("\n[cyan]=== Starting Vendor Cleanup ===[/cyan]\n")
+
+        # Check if cargo-vendor-checksum is available
+        checksum_available = False
+        try:
+            subprocess.run(
+                ["cargo-vendor-checksum", "--version"],
+                capture_output=True,
+                check=True,
+            )
+            checksum_available = True
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            rich_print(
+                "[yellow]WARNING: cargo-vendor-checksum not found. "
+                "Install it for proper checksum updates:[/yellow]"
+            )
+            rich_print("[yellow]  su -c 'apt-get install cargo-vendor-checksum'[/yellow]\n")
+
+        try:
+            cleaner = VendorCleaner(str(vendor_path))
+
+            # Don't remove Windows crates when using cargo-vendor-alt
+            # because it already created optimal stubs
+            should_remove_windows = not keep_windows and not use_filterer
+
+            if use_filterer and not keep_windows:
+                rich_print(
+                    "[yellow]INFO: Skipping Windows crate removal: "
+                    "cargo-vendor-alt already created optimal stubs[/yellow]"
+                )
+
+            cleanup_opts = CleanupOptions(
+                remove_binaries=True,
+                remove_windows=should_remove_windows,
+                update_checksums=True,
+            )
+
+            report = cleaner.cleanup(cleanup_opts)
+
+            rich_print("\n[green]=== Cleanup Complete ===[/green]\n")
+            report.print_summary()
+
+            # Update git commit if cleanup made changes
+            if report.space_saved_mb > 0 or report.removed_crates or report.gitattributes_removed > 0:
+                logger.info("Staging vendor cleanup changes")
+                subprocess.run(["git", "add", "-f", "vendor"], check=True)
+
+                # Check if there are any changes to commit
+                diff_result = subprocess.run(
+                    ["git", "diff", "--cached", "--quiet"],
+                    capture_output=True,
+                )
+
+                if diff_result.returncode != 0:
+                    # Create commit message (preserve Add vs Update logic)
+                    base_msg = (
+                        "Update Rust vendor dependencies"
+                        if vendor_tracked
+                        else "Add vendored Rust dependencies"
+                    )
+                    
+                    if verbose_commit:
+                        # Detailed commit with cleanup info
+                        cleanup_details = []
+                        cleanup_details.append(f"- Removed {report.removed_files} binary artifact files")
+                        if report.gitattributes_removed > 0:
+                            cleanup_details.append(f"- Removed {report.gitattributes_removed} .gitattributes files (prevents gear/git archive issues)")
+                        cleanup_details.append(f"- Removed {len(report.removed_crates)} Windows-specific crates")
+                        cleanup_details.append(f"- Updated {report.checksums_updated} checksum files")
+                        cleanup_details.append(f"- Space saved: {report.space_saved_mb:.1f} MB")
+                        
+                        commit_msg = f"""{base_msg}
+
+Vendoring command: {vendor_cmd.split(';')[0]}
+Cleanup performed:
+{chr(10).join(cleanup_details)}
+
+Final stats: {report.after}
+"""
+                    else:
+                        # Simple commit message (default)
+                        commit_msg = base_msg
+                    
+                    subprocess.run(
+                        ["git", "commit", "--amend", "-m", commit_msg],
+                        check=True,
+                    )
+                    logger.info("Updated commit message")
+                    rich_print(
+                        "[green]? Commit updated[/green]"
+                    )
+
+        except Exception as e:
+            logger.error(f"Vendor cleanup failed: {e}")
+            rich_print(f"[red]Vendor cleanup failed: {e}[/red]")
+            rich_print(
+                "[yellow]Continuing without cleanup. Manual cleanup may be needed.[/yellow]"
+            )
+
+    # Show final statistics
+    if stats:
+        rich_print("\n[cyan]=== Final Vendor Statistics ===[/cyan]\n")
+        show_vendor_stats(str(vendor_path), "Final Vendor Directory")
+
+    # Final instructions
+    if cleanup:
+        rich_print(
+            "\n[green]OK: Vendor dependencies updated with cleanup![/green]"
+        )
+    else:
+        rich_print(
+            "\n[yellow]Tip: Use --cleanup flag to optimize vendor directory size[/yellow]"
+        )
 
 
 @vendor_app.command("go")
