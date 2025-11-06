@@ -112,6 +112,51 @@ pip install .
 altbuilder --help
 ```
 
+### Shell Completion (Optional but Recommended)
+
+Enable tab completion for altbuilder commands, sandbox names, and package names.
+
+#### For Bash:
+
+```bash
+# Install completion
+altbuilder --install-completion bash
+
+# Add to your ~/.bashrc (if not added automatically)
+eval "$(_ALTBUILDER_COMPLETE=bash_source altbuilder)"
+
+# Reload shell
+source ~/.bashrc
+```
+
+#### For Zsh:
+
+```bash
+# Install completion
+altbuilder --install-completion zsh
+
+# Add to your ~/.zshrc (if not added automatically)
+eval "$(_ALTBUILDER_COMPLETE=zsh_source altbuilder)"
+
+# Reload shell
+source ~/.zshrc
+```
+
+#### For Fish:
+
+```bash
+# Install completion
+altbuilder --install-completion fish
+
+# Reload shell
+source ~/.config/fish/config.fish
+```
+
+**Note:** After enabling completion, you can use Tab to autocomplete:
+- Sandbox names: `altbuilder -s <TAB>`
+- Package names: `altbuilder path -s sandbox <TAB>`
+- Command names and options
+
 ## Quick Start
 
 ### 1. Initialize Configuration
@@ -274,6 +319,57 @@ Options:
 - `--sandbox, -s`: Show details for specific sandbox
 - `-f`: Open sandbox directory in file manager
 - `--file-manager`: Specify file manager (mc, ranger)
+
+#### `altbuilder path`
+
+Get paths to RPM files or directories in sandboxes. Useful for quick access to built packages.
+
+**Basic usage:**
+
+```bash
+# Get path to a specific package RPM
+altbuilder path -s deepcool deepcool-digital-linux
+# → /home/user/.altbuilder/environments/deepcool/hasher/repo/x86_64/RPMS.hasher/deepcool-digital-linux-0.9.0-alt1.x86_64.rpm
+
+# Get path to source RPM
+altbuilder path -s deepcool deepcool-digital-linux --srpm
+# → /home/user/.altbuilder/environments/deepcool/hasher/repo/SRPMS.hasher/deepcool-digital-linux-0.9.0-alt1.src.rpm
+
+# Get path to RPM directory (useful for cd command)
+altbuilder path -s deepcool --dir
+# → /home/user/.altbuilder/environments/deepcool/hasher/repo/x86_64/RPMS.hasher
+```
+
+**Practical examples:**
+
+```bash
+# Install locally built package
+sudo apt-get install $(altbuilder path -s deepcool deepcool-digital-linux)
+
+# Copy RPM to another location
+cp $(altbuilder path -s deepcool deepcool) /tmp/
+
+# Change to RPM directory
+cd $(altbuilder path -s deepcool --dir)
+
+# Use with tab completion (see Shell Completion section below)
+altbuilder path -s <TAB>  # completes sandbox names
+altbuilder path -s deepcool <TAB>  # completes package names in sandbox
+```
+
+Options:
+
+- `--sandbox, -s`: Sandbox name (supports tab completion)
+- `--srpm`: Return path to source RPM instead of binary RPM
+- `--dir`: Return path to RPM directory instead of specific file
+- `--no-debuginfo`: Exclude debuginfo packages from results
+
+**Note:** You can also use the global `--sandbox/-s` flag: `altbuilder -s deepcool path`
+
+**Behavior:**
+- Without package name: returns all RPMs in the sandbox
+- With package name: returns exact package match only (e.g., `python3-module-numpy` returns only the main package, not `-tests`, `-devel`, or `-debuginfo`)
+- To get debuginfo package explicitly: use `python3-module-numpy-debuginfo` as package name
 
 #### `altbuilder shell`
 

@@ -5,6 +5,7 @@ import typer
 
 from ..config import load_config
 from ..utils.logger import init_logger, logger
+from ..utils.completion import complete_sandbox
 # Temporarily commented out until converted to Typer
 from .build_cmd import build_cmd
 from .clean_cmd import clean_cmd
@@ -25,6 +26,7 @@ from .track_cmd import track_cmd
 from .update_submodules_cmd import update_submodules
 from .git_alt_cmd import git_alt_cmd
 from .vendor_cmd import vendor_app
+from .path_cmd import path
 
 app = typer.Typer(
     name="altbuilder",
@@ -56,6 +58,7 @@ def main_callback(
         "--sandbox",
         "-s",
         help="Sandbox name (e.g., Sisyphus-x86_64). Defaults to <branch>-<arch> from config.",
+        autocompletion=complete_sandbox,
     ),
     json_output: bool = typer.Option(
         False,
@@ -117,6 +120,7 @@ app.command("update-submodules")(update_submodules)
 app.command("merge-tag")(merge_tag)
 app.command("rpmdiff")(rpmdiff_cmd)
 app.command("git.alt")(git_alt_cmd)
+app.command("path")(path)
 app.add_typer(copy_app, name="copy")
 app.add_typer(vendor_app, name="vendor")
 
