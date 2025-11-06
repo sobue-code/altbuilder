@@ -1,7 +1,6 @@
 import difflib
 import json
 import os
-import shutil
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List
@@ -314,11 +313,6 @@ def logs_cmd(
         "--file-manager",
         help="Specify file manager (e.g., mc or ranger) to use with -f.",
     ),
-    clean: bool = typer.Option(
-        False,
-        "--clean",
-        help="Remove logs for the specified sandbox or all logs if no sandbox is specified.",
-    ),
     expand_history: bool = typer.Option(
         False,
         "--expand-history",
@@ -335,7 +329,9 @@ def logs_cmd(
         None, help="Build IDs or indices to compare for --diff-spec."
     ),
 ):
-    """Display or manage build logs for sandboxes and packages."""
+    """Display build logs for sandboxes and packages.
+
+    To clean logs, use: altbuilder clean --logs"""
     json_requested = is_json_mode(ctx) or json_output
     params = {
         "sandbox": sandbox,
@@ -345,7 +341,6 @@ def logs_cmd(
         "limit": limit,
         "open": f,
         "file_manager": file_manager,
-        "clean": clean,
         "expand_history": expand_history,
         "diff_spec": diff_spec,
         "diff_ids": diff_ids,
@@ -364,138 +359,7 @@ def logs_cmd(
     if package:
         log_dir = os.path.join(log_dir, package)
 
-    # Handle --clean option
-    if clean:
-        if not os.path.exists(log_dir):
-            message = f"Log directory {log_dir} does not exist."
-            if json_requested:
-                json_response(
-                    ctx,
-                    "success",
-                    params=params,
-                    message=message,
-                    log_path=log_dir,
-                )
-            else:
-                console.print(message, style="yellow")
-            logger.info(f"No logs found at {log_dir}")
-            return
-        if rebuild_id:
-            builds_to_remove = collect_build_logs(
-                config["build_logs_dir"], sandbox, package, rebuild_id
-            )
-            if not builds_to_remove:
-                message = (
-                    "No logs found for rebuild "
-                    f"{rebuild_id} matching the provided filters."
-                )
-                if json_requested:
-                    json_response(
-                        ctx,
-                        "success",
-                        params=params,
-                        message=message,
-                        log_path=log_dir,
-                        removed=[],
-                    )
-                else:
-                    console.print(message, style="yellow")
-                logger.info(
-                    "No logs found for rebuild %s during cleanup", rebuild_id
-                )
-                return
-            removed_paths: List[str] = []
-            missing_paths: List[str] = []
-            errors: List[Dict[str, str]] = []
-            for build in builds_to_remove:
-                path = build.get("log_path")
-                if not path:
-                    continue
-                if not os.path.exists(path):
-                    missing_paths.append(path)
-                    logger.warning("Log path %s not found during cleanup", path)
-                    continue
-                try:
-                    shutil.rmtree(path)
-                    removed_paths.append(path)
-                    logger.info("Removed logs at %s", path)
-                except OSError as exc:
-                    errors.append({"path": path, "error": str(exc)})
-                    logger.error("Failed to remove logs at %s: %s", path, exc)
-            message_parts: List[str] = []
-            if removed_paths:
-                count = len(removed_paths)
-                word = "directory" if count == 1 else "directories"
-                message_parts.append(
-                    f"Removed {count} log {word} for rebuild {rebuild_id}."
-                )
-            if missing_paths:
-                count = len(missing_paths)
-                word = "directory" if count == 1 else "directories"
-                verb = "was" if count == 1 else "were"
-                message_parts.append(f"{count} log {word} {verb} not found.")
-            if errors:
-                count = len(errors)
-                word = "directory" if count == 1 else "directories"
-                message_parts.append(f"Failed to remove {count} log {word}.")
-            if not message_parts:
-                message_parts.append(
-                    f"No log directories were removed for rebuild {rebuild_id}."
-                )
-            message = " ".join(message_parts)
-            if json_requested:
-                payload: Dict[str, Any] = {
-                    "removed": removed_paths,
-                    "not_found": missing_paths,
-                    "errors": errors,
-                }
-                json_response(
-                    ctx,
-                    "success",
-                    params=params,
-                    message=message,
-                    log_path=log_dir,
-                    **payload,
-                )
-            else:
-                style = "red" if errors else "green" if removed_paths else "yellow"
-                console.print(message, style=style)
-                if errors and not removed_paths:
-                    console.print(
-                        "Some log directories could not be removed.", style="red"
-                    )
-            return
-        try:
-            shutil.rmtree(log_dir, ignore_errors=True)
-            message = f"Logs at {log_dir} removed successfully."
-            if json_requested:
-                json_response(
-                    ctx,
-                    "success",
-                    params=params,
-                    message=message,
-                    log_path=log_dir,
-                )
-            else:
-                console.print(message, style="green")
-            logger.info(f"Removed logs at {log_dir}")
-        except OSError as e:
-            message = f"Error removing logs at {log_dir}: {e}"
-            if json_requested:
-                json_response(
-                    ctx,
-                    "error",
-                    params=params,
-                    message=message,
-                    log_path=log_dir,
-                    code=1,
-                )
-            else:
-                console.print(message, style="red")
-            logger.error(f"Failed to remove logs at {log_dir}: {e}")
-        return
-
-    # Handle log viewing (default behavior)
+    # Handle log viewing
     if not os.path.exists(log_dir):
         message = f"Log directory {log_dir} does not exist."
         if json_requested:
