@@ -300,7 +300,11 @@ class RemoteRepository:
 
         if mirror.startswith("file:"):
             local_path = mirror[5:]
-            return os.path.join(local_path, branch_lower, "last", "files", "SRPMS")
+            altlinux_path = os.path.join(local_path, "pub", "distributions", "ALTLinux")
+            if os.path.exists(altlinux_path):
+                return os.path.join(local_path, "pub", "distributions", "ALTLinux", branch, "files", "SRPMS")
+            else:
+                return os.path.join(local_path, branch_lower, "last", "files", "SRPMS")
         elif mirror.startswith("http"):
             if branch_lower == "sisyphus":
                 return f"{mirror}/ALTLinux/{branch}/files/SRPMS/"

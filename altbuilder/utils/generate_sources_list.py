@@ -23,22 +23,20 @@ def generate_sources_list(
     lines = []
 
     if mirror.startswith("file:/"):
-        # Extract local path from file:// URL
         local_mirror = mirror.replace("file:", "")
-        last_path = os.path.join(local_mirror, branch.lower(), "last")
-
-        # Resolve the 'last' symlink to its real path
-        try:
-            real_path = os.readlink(last_path)
-            # real_path is usually a relative path, so join with parent
-            repo_path = os.path.normpath(
-                os.path.join(local_mirror, branch.lower(), real_path)
-            )
-            # Add back the 'file:' prefix for the final path
-            repo_path = "file:" + repo_path
-        except (OSError, FileNotFoundError):
-            # Fallback to 'last' if symlink resolution fails
-            repo_path = f"{mirror}/{branch.lower()}/last"
+        altlinux_path = os.path.join(local_mirror, "pub", "distributions", "ALTLinux")
+        if os.path.exists(altlinux_path):
+            repo_path = f"{mirror}/pub/distributions/ALTLinux/{branch}"
+        else:
+            last_path = os.path.join(local_mirror, branch.lower(), "last")
+            try:
+                real_path = os.readlink(last_path)
+                resolved_path = os.path.normpath(
+                    os.path.join(local_mirror, branch.lower(), real_path)
+                )
+                repo_path = "file:" + resolved_path
+            except (OSError, FileNotFoundError):
+                repo_path = f"{mirror}/{branch.lower()}"
 
         # Add repository entries for arch and noarch
         lines.append(f"rpm {repo_path} {arch} classic")
