@@ -1,7 +1,6 @@
 import difflib
 import json
 import os
-import shutil
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List
@@ -302,11 +301,6 @@ def logs_cmd(
         "--file-manager",
         help="Specify file manager (e.g., mc or ranger) to use with -f.",
     ),
-    clean: bool = typer.Option(
-        False,
-        "--clean",
-        help="Remove logs for the specified sandbox or all logs if no sandbox is specified.",
-    ),
     expand_history: bool = typer.Option(
         False,
         "--expand-history",
@@ -323,7 +317,9 @@ def logs_cmd(
         None, help="Build IDs or indices to compare for --diff-spec."
     ),
 ):
-    """Display or manage build logs for sandboxes and packages."""
+    """Display build logs for sandboxes and packages.
+
+    To clean logs, use: altbuilder clean --logs"""
     # Support both global --json and local --json-output flags
     json_mode = is_json_mode(ctx) or json_output
 
@@ -341,27 +337,7 @@ def logs_cmd(
     if package:
         log_dir = os.path.join(log_dir, package)
 
-    # Handle --clean option
-    if clean:
-        if not os.path.exists(log_dir):
-            console.print(f"Log directory {log_dir} does not exist.", style="yellow")
-            logger.info(f"No logs found at {log_dir}")
-            return
-        if typer.confirm(f"Are you sure you want to remove logs at {log_dir}?"):
-            try:
-                shutil.rmtree(log_dir, ignore_errors=True)
-                console.print(
-                    f"Logs at {log_dir} removed successfully.", style="green"
-                )
-                logger.info(f"Removed logs at {log_dir}")
-            except OSError as e:
-                console.print(
-                    f"Error removing logs at {log_dir}: {e}", style="red"
-                )
-                logger.error(f"Failed to remove logs at {log_dir}: {e}")
-            return
-
-    # Handle log viewing (default behavior)
+    # Handle log viewing
     if not os.path.exists(log_dir):
         console.print(f"Log directory {log_dir} does not exist.", style="red")
         logger.info(f"No logs found at {log_dir}")
