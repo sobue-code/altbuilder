@@ -13,6 +13,7 @@ app = typer.Typer(
 
 @app.command()
 def shell_cmd(
+    ctx: typer.Context,
     sandbox: str = typer.Option(
         None,
         "--sandbox",
@@ -36,7 +37,7 @@ def shell_cmd(
     (e.g., `altbuilder --sandbox Sisyphus-x86_64 shell`)
     """
     config = load_config()
-    sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
+    sandbox_name = sandbox or ctx.obj.get("sandbox") or f"{config['branch']}-{config['arch']}"
     sandbox_config = get_sandbox_config(sandbox_name, config)
 
     # Initialize logging

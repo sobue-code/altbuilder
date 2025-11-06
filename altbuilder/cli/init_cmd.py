@@ -35,6 +35,10 @@ def init_cmd(
 ):
     """Initialize a new sandbox environment."""
     json_mode = is_json_mode(ctx)
+
+    # Use sandbox from context if not provided
+    sandbox = sandbox or ctx.obj.get("sandbox")
+
     params = {
         "sandbox": sandbox,
         "branch": branch,

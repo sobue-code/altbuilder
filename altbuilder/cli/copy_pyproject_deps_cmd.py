@@ -12,6 +12,7 @@ app = typer.Typer(name="copy-pyproject-deps", help="Copy pyproject_deps.json fro
 
 @app.command()
 def copy_pyproject_deps(
+    ctx: typer.Context,
     sandbox: str = typer.Option(
         None,
         "--sandbox",
@@ -33,7 +34,7 @@ def copy_pyproject_deps(
 ):
     """Copy pyproject_deps.json from sandbox to specified output path."""
     config = load_config()
-    sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
+    sandbox_name = sandbox or ctx.obj.get("sandbox") or f"{config['branch']}-{config['arch']}"
     sandbox_config = get_sandbox_config(sandbox_name, config)
     init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
     env = Environment(sandbox_name, sandbox_config)

@@ -29,7 +29,7 @@ def install_cmd(
     """Install packages into specified sandbox."""
     json_mode = is_json_mode(ctx)
     config = load_config()
-    sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
+    sandbox_name = sandbox or ctx.obj.get("sandbox") or f"{config['branch']}-{config['arch']}"
     sandbox_config = get_sandbox_config(sandbox_name, config)
 
     # Initialize logger

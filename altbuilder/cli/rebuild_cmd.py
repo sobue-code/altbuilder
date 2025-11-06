@@ -149,12 +149,15 @@ def rebuild_cmd(
     except Exception as e:
         emit_error(f"Failed to load configuration: {e}")
 
+    # Use sandbox from context if not provided
+    resolved_sandbox = sandbox or ctx.obj.get("sandbox")
+
     task_branch_hint = None
 
     def resolve_sandbox_name_hint() -> str:
         nonlocal task_branch_hint
-        if sandbox:
-            return sandbox
+        if resolved_sandbox:
+            return resolved_sandbox
         branch_candidate = branch.strip() if branch else None
         arch_candidate = arch.strip() if arch else None
         if task and not branch_candidate:
@@ -169,7 +172,7 @@ def rebuild_cmd(
 
     try:
         env = setup_sandbox(
-            sandbox,
+            resolved_sandbox,
             branch,
             arch,
             reinit,

@@ -42,7 +42,7 @@ def run_cmd(
     command_str = " ".join(command)
 
     config = load_config()
-    sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
+    sandbox_name = sandbox or ctx.obj.get("sandbox") or f"{config['branch']}-{config['arch']}"
     sandbox_config = get_sandbox_config(sandbox_name, config)
 
     init_logger(sandbox_name, sandbox_config["build_logs_dir"], config)
