@@ -25,9 +25,31 @@ def generate_sources_list(
     if mirror.startswith("file:/"):
         local_mirror = mirror.replace("file:", "")
         altlinux_path = os.path.join(local_mirror, "pub", "distributions", "ALTLinux")
+
+        # Check if we have the standard ALTLinux structure
         if os.path.exists(altlinux_path):
-            repo_path = f"{mirror}/pub/distributions/ALTLinux/{branch}"
+            # Standard structure: /pub/distributions/ALTLinux/
+            if branch.lower() == "sisyphus":
+                repo_path = f"{mirror}/pub/distributions/ALTLinux/{branch}"
+                lines.append(f"rpm {repo_path} {arch} classic")
+                lines.append(f"rpm {repo_path} noarch classic")
+                if arch == "x86_64":
+                    lines.append(f"rpm {repo_path} {arch}-i586 classic")
+            elif branch.lower() in SUPPORTED_BRANCHES:
+                # For p* branches: /pub/distributions/ALTLinux/p11/branch/
+                base_path = f"{mirror}/pub/distributions/ALTLinux"
+                lines.append(
+                    f"rpm [{branch}] {base_path} {branch}/branch/{arch} classic gostcrypto"
+                )
+                if arch == "x86_64":
+                    lines.append(
+                        f"rpm [{branch}] {base_path} {branch}/branch/{arch}-i586 classic"
+                    )
+                lines.append(f"rpm [{branch}] {base_path} {branch}/branch/noarch classic")
+            else:
+                raise ValueError(f"Unsupported branch name: {branch}")
         else:
+            # Alternative structure with symlinks (e.g., /sisyphus/last -> date-based dir)
             last_path = os.path.join(local_mirror, branch.lower(), "last")
             try:
                 real_path = os.readlink(last_path)
@@ -38,9 +60,9 @@ def generate_sources_list(
             except (OSError, FileNotFoundError):
                 repo_path = f"{mirror}/{branch.lower()}"
 
-        # Add repository entries for arch and noarch
-        lines.append(f"rpm {repo_path} {arch} classic")
-        lines.append(f"rpm {repo_path} noarch classic")
+            # Add repository entries for arch and noarch
+            lines.append(f"rpm {repo_path} {arch} classic")
+            lines.append(f"rpm {repo_path} noarch classic")
     elif branch.lower() == "sisyphus":
         lines.append(f"rpm {mirror}/ALTLinux/{branch} {arch} classic")
         lines.append(f"rpm {mirror}/ALTLinux/{branch} noarch classic")
