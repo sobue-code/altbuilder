@@ -81,31 +81,83 @@ class Environment:
 
     def _generate_priorities(self):
         """Generate priorities file based on branch."""
-        branch = self.config.get("branch", "Sisyphus").lower()
-        release = (
-            "altlinux-release-Sisyphus"
-            if branch == "sisyphus"
-            else f"altlinux-release-{branch}"
-        )
+        branch = self.config.get("branch", "Sisyphus")
+        # Determine the real branch name for release packages
+        if branch.lower() == "sisyphus":
+            repo_real_name = "Sisyphus"
+        else:
+            repo_real_name = branch
+
         content = f"""Important:
-basesystem
-{release}
+  basesystem
 Required:
-apt
+  apt
+Standard:
+  etcnet
+  kernel-doc
+  libpam0
+  libpam0-devel
+  maxima-bin-gcl
+  postfix
+  python-dev
+  python-modules-tkinter
+  llvm-common
+  llvm-common-clang
+  llvm-common-clang-devel
+  llvm-common-clang-devel-static
+  llvm-common-clang-tools
+  llvm-common-clangd
+  llvm-common-devel
+  llvm-common-devel-static
+  llvm-common-lld
+  llvm-common-lld-devel
+  llvm-common-lldb
+  llvm-common-util
+  altlinux-release-{repo_real_name}
+  branding-alt-{repo_real_name}-alterator
+  branding-alt-{repo_real_name}-bootloader
+  branding-alt-{repo_real_name}-bootsplash
+  branding-alt-{repo_real_name}-gnome-settings
+  branding-alt-{repo_real_name}-graphics
+  branding-alt-{repo_real_name}-indexhtml
+  branding-alt-{repo_real_name}-kde3-settings
+  branding-alt-{repo_real_name}-kde4-settings
+  branding-alt-{repo_real_name}-notes
+  branding-alt-{repo_real_name}-slideshow
+  branding-alt-{repo_real_name}-themes
+  branding-alt-{repo_real_name}-xfce-settings
+  branding-altlinux-{repo_real_name}-alterator
+  branding-altlinux-{repo_real_name}-bootloader
+  branding-altlinux-{repo_real_name}-bootsplash
+  branding-altlinux-{repo_real_name}-gnome-settings
+  branding-altlinux-{repo_real_name}-graphics
+  branding-altlinux-{repo_real_name}-indexhtml
+  branding-altlinux-{repo_real_name}-kde3-settings
+  branding-altlinux-{repo_real_name}-kde4-settings
+  branding-altlinux-{repo_real_name}-notes
+  branding-altlinux-{repo_real_name}-slideshow
+  branding-altlinux-{repo_real_name}-themes
+  branding-altlinux-{repo_real_name}-xfce-settings
 """
         with open(self.priorities, "w") as f:
             f.write(content)
 
     def _generate_apt_conf(self):
         """Generate apt.conf file with links to sources.list and priorities."""
+        # Create lists directory for package lists
+        lists_dir = os.path.join(self.environment_dir, "lists")
+        os.makedirs(lists_dir, exist_ok=True)
+        os.makedirs(os.path.join(lists_dir, "partial"), exist_ok=True)
+
         conf = f"""Dir::Etc::main "/dev/null";
 Dir::Etc::parts "/var/empty";
+Dir::Etc::sourceparts "/var/empty";
 Dir::Etc::sourcelist "{self.sources_list}";
+Dir::State::lists "{lists_dir}";
 Dir::Etc::pkgpriorities "{self.priorities}";
-APT::Cache-Limit "201326592";
-APT::Architecture "{self.config['arch']}";
 Debug::pkgMarkInstall "true";
 Debug::pkgProblemResolver "true";
+APT::Cache-Limit "201326592";
 """
         with open(self.apt_conf, "w") as f:
             f.write(conf)

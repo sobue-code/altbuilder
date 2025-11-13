@@ -302,12 +302,15 @@ class RemoteRepository:
             local_path = mirror[5:]
             altlinux_path = os.path.join(local_path, "pub", "distributions", "ALTLinux")
             if os.path.exists(altlinux_path):
-                return os.path.join(local_path, "pub", "distributions", "ALTLinux", branch, "files", "SRPMS")
+                # Sisyphus must be capitalized in the path
+                branch_url = "Sisyphus" if branch_lower == "sisyphus" else branch
+                return os.path.join(local_path, "pub", "distributions", "ALTLinux", branch_url, "files", "SRPMS")
             else:
                 return os.path.join(local_path, branch_lower, "last", "files", "SRPMS")
         elif mirror.startswith("http"):
             if branch_lower == "sisyphus":
-                return f"{mirror}/ALTLinux/{branch}/files/SRPMS/"
+                # Sisyphus must be capitalized in the URL
+                return f"{mirror}/ALTLinux/Sisyphus/files/SRPMS/"
             return f"{mirror}/ALTLinux/{branch}/branch/files/SRPMS/"
         else:
             raise RemoteError(f"Invalid mirror type: {mirror}")

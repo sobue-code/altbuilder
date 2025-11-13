@@ -30,7 +30,9 @@ def generate_sources_list(
         if os.path.exists(altlinux_path):
             # Standard structure: /pub/distributions/ALTLinux/
             if branch.lower() == "sisyphus":
-                repo_path = f"{mirror}/pub/distributions/ALTLinux/{branch}"
+                # Sisyphus must be capitalized in the URL
+                branch_url = "Sisyphus"
+                repo_path = f"{mirror}/pub/distributions/ALTLinux/{branch_url}"
                 lines.append(f"rpm {repo_path} {arch} classic")
                 lines.append(f"rpm {repo_path} noarch classic")
                 if arch == "x86_64":
@@ -64,10 +66,12 @@ def generate_sources_list(
             lines.append(f"rpm {repo_path} {arch} classic")
             lines.append(f"rpm {repo_path} noarch classic")
     elif branch.lower() == "sisyphus":
-        lines.append(f"rpm {mirror}/ALTLinux/{branch} {arch} classic")
-        lines.append(f"rpm {mirror}/ALTLinux/{branch} noarch classic")
+        # Sisyphus must be capitalized in the URL
+        branch_url = "Sisyphus"
+        lines.append(f"rpm {mirror}/ALTLinux/{branch_url} {arch} classic")
+        lines.append(f"rpm {mirror}/ALTLinux/{branch_url} noarch classic")
         if arch == "x86_64":
-            lines.append(f"rpm {mirror}/ALTLinux/{branch} {arch}-i586 classic")
+            lines.append(f"rpm {mirror}/ALTLinux/{branch_url} {arch}-i586 classic")
     elif branch.lower() in SUPPORTED_BRANCHES:
         lines.append(
             f"rpm [{branch}] {mirror}/ALTLinux {branch}/branch/{arch} classic gostcrypto"
