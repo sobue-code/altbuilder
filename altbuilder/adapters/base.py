@@ -13,5 +13,6 @@ class ToolAdapter(ABC):
             return self.run_command(cmd, log_file=log_file, **kwargs)
         except subprocess.CalledProcessError as e:
             raise ToolError(
-                f"Command {cmd} failed with exit code {e.returncode}: {e.output}"
+                f"Command {cmd} failed with exit code {e.returncode}: {e.output}",
+                exit_code=e.returncode
             )

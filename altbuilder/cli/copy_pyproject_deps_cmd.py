@@ -10,6 +10,81 @@ from altbuilder.utils import init_logger, logger
 app = typer.Typer(name="copy-pyproject-deps", help="Copy pyproject_deps.json from sandbox to .gear/ directory.")
 
 
+def _copy_deps_from_sandbox(env: Environment, output_path: str) -> bool:
+    """
+    Copy pyproject_deps.json from sandbox to specified path.
+
+    Args:
+        env: Environment object for the sandbox
+        output_path: Path where to save the file
+
+    Returns:
+        bool: True if copy was successful, False otherwise
+
+    Raises:
+        subprocess.CalledProcessError: If hsh-run command fails
+    """
+    cmd = [
+        "hsh-run",
+        "--mountpoints=/proc",
+        env.hasher_dir,
+        "--",
+        "/bin/bash",
+        "-ec",
+        'cat "$(rpm --eval %pyproject_deps_config)"',
+    ]
+
+    # Create output directory if it doesn't exist
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    with open(output_path, "w") as f:
+        subprocess.run(cmd, stdout=f, check=True)
+
+    logger.info(f"Copied pyproject_deps.json to {output_path}")
+    return True
+
+
+def _stage_pyproject_deps(file_path: str) -> bool:
+    """
+    Stage pyproject_deps.json file in git (git add).
+
+    Args:
+        file_path: Path to the file to stage
+
+    Returns:
+        bool: True if file was staged and has changes, False if no changes or not in git repo
+    """
+    # Check if we're in a git repository
+    try:
+        subprocess.run(["git", "status"], capture_output=True, check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        logger.info("Not in a git repository, skipping git operations")
+        return False
+
+    # Stage the file
+    try:
+        subprocess.run(["git", "add", file_path], check=True)
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Failed to stage file in git: {e}")
+        return False
+
+    # Check if there are changes
+    try:
+        status_proc = subprocess.run(
+            ["git", "status", "--porcelain", file_path],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        has_changes = bool(status_proc.stdout.strip())
+        return has_changes
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Failed to check git status: {e}")
+        return False
+
+
 @app.command()
 def copy_pyproject_deps(
     ctx: typer.Context,
@@ -51,34 +126,18 @@ def copy_pyproject_deps(
         output = os.path.join(output, "pyproject_deps.json")
 
     logger.info(f"Copying pyproject_deps.json from sandbox {sandbox_name} to {output}")
-    cmd = [
-        "hsh-run",
-        "--mountpoints=/proc",
-        env.hasher_dir,
-        "--",
-        "/bin/bash",
-        "-ec",
-        'cat "$(rpm --eval %pyproject_deps_config)"',
-    ]
+
     try:
-        # Create output directory if it doesn't exist
-        output_dir = os.path.dirname(output)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-        with open(output, "w") as f:
-            subprocess.run(cmd, stdout=f, check=True)
+        # Use the extracted function to copy deps
+        _copy_deps_from_sandbox(env, output)
 
-        # Check if we're in a git repository
-        git_available = True
-        try:
-            subprocess.run(["git", "status"], capture_output=True, check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            git_available = False
-            logger.info("Not in a git repository, skipping git operations")
+        # Use the extracted function to stage the file in git
+        has_changes = _stage_pyproject_deps(output)
+        git_available = has_changes or os.path.exists(os.path.join(os.getcwd(), '.git'))
 
+        # Check if file is already tracked (for commit message)
+        pyproject_tracked = False
         if git_available:
-            # Check if pyproject_deps.json is already tracked in git
-            pyproject_tracked = False
             try:
                 subprocess.run(
                     ["git", "ls-files", output],
@@ -89,31 +148,6 @@ def copy_pyproject_deps(
                 pyproject_tracked = True
             except subprocess.CalledProcessError:
                 pyproject_tracked = False
-
-            # Stage the pyproject_deps.json file
-            try:
-                subprocess.run(["git", "add", output], check=True)
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Failed to stage file in git: {e}")
-                logger.info("File copied successfully, but git operations failed")
-                rich_print(f"[yellow]File copied successfully, but git operations failed: {e}[/yellow]")
-                return
-
-            # Check if there are changes to commit
-            try:
-                status_proc = subprocess.run(
-                    ["git", "status", "--porcelain", output],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                has_changes = bool(status_proc.stdout.strip())
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Failed to check git status: {e}")
-                has_changes = False
-        else:
-            has_changes = False
-            pyproject_tracked = False
 
         # Commit logic: prompt for confirmation unless force_commit is True
         if git_available:

@@ -5,6 +5,7 @@ import shutil
 import shlex
 from rich import print as rich_print
 from .logger import logger, cmd_logger
+from altbuilder.exceptions import ToolError
 
 
 def get_host_arch():
@@ -211,3 +212,38 @@ def copy_spec_to_log_dir(build_target, is_src_rpm, build_log_dir, package_name):
                 logger.warning(f"No spec file found in {build_target}")
         except Exception as e:
             logger.warning(f"Failed to extract spec from {build_target}: {e}")
+
+
+def is_pyproject_deps_sync_error(error: ToolError) -> bool:
+    """
+    Determine if the error is related to pyproject_deps.json synchronization.
+
+    Returns True if:
+    - Exit code is 4 (RPM pyproject_deps sync verification failure)
+    - Error message contains telltale signs of deps sync issue
+
+    Args:
+        error: ToolError exception to check
+
+    Returns:
+        bool: True if this is a pyproject_deps sync error
+    """
+    # Check exit code 4 (deps sync verification failure)
+    if hasattr(error, 'exit_code') and error.exit_code == 4:
+        return True
+
+    # Additional check: look for characteristic error messages
+    error_msg = str(error).lower()
+    deps_indicators = [
+        "dependencies of source",
+        "changed since last check",
+        "pyproject_deps",
+        "deps sync"
+    ]
+
+    # Check if at least two indicators are present (to avoid false positives)
+    matches = sum(1 for indicator in deps_indicators if indicator in error_msg)
+    if matches >= 2:
+        return True
+
+    return False

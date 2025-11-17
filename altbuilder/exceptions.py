@@ -8,7 +8,10 @@ class ConfigError(AltBuilderError):
 
 class ToolError(AltBuilderError):
     """Raised for errors interacting with external tools."""
-    pass
+
+    def __init__(self, message: str, exit_code: int = None):
+        super().__init__(message)
+        self.exit_code = exit_code
 
 class BuildError(AltBuilderError):
     """Raised for build process errors."""
