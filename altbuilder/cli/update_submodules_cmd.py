@@ -14,6 +14,16 @@ app = typer.Typer(
 )
 
 
+def remove_nested_git_files(path: str) -> None:
+    """Remove .git files copied from submodule worktrees."""
+    for dirpath, dirnames, filenames in os.walk(path):
+        if ".git" in filenames:
+            os.remove(os.path.join(dirpath, ".git"))
+        if ".git" in dirnames:
+            subprocess.run(["rm", "-rf", os.path.join(dirpath, ".git")], check=True)
+            dirnames.remove(".git")
+
+
 @app.command()
 def update_submodules(
     tag: str = typer.Argument(..., help="Git tag to use for updating submodules")
@@ -82,10 +92,18 @@ def update_submodules(
 
     # Switch/create alt_submodules branch
     try:
-        subprocess.run(["git", "switch", "-q", "alt_submodules"], check=True)
+        subprocess.run(
+            ["git", "switch", "-q", "alt_submodules"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     except subprocess.CalledProcessError:
         subprocess.run(
             ["git", "switch", "-q", "--orphan", "alt_submodules"], check=True
+        )
+        subprocess.run(
+            ["git", "rm", "-rf", "--quiet", "--ignore-unmatch", "."], check=True
         )
 
     # Cleanup modules dir
@@ -120,6 +138,7 @@ def update_submodules(
             ],
             check=True,
         )
+        remove_nested_git_files(modules_dir)
 
         # Save submodule status
         submodules_status = subprocess.check_output(
