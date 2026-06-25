@@ -64,8 +64,13 @@ def _update_vendor_common(
     reinit: bool,
     tag: str,
     force_commit: bool = False,
+    vendor_dir_name: str = "vendor",
 ):
-    """Common logic for updating vendor dependencies."""
+    """Common logic for updating vendor dependencies.
+
+    Args:
+        vendor_dir_name: Name of the vendor directory (e.g., "vendor" for Rust/Go, "node_modules" for NPM)
+    """
     config = load_config()
     sandbox_name = sandbox or f"{config['branch']}-{config['arch']}"
     sandbox_config = get_sandbox_config(sandbox_name, config)
@@ -157,11 +162,27 @@ def _update_vendor_common(
         subprocess.run(cmd, env=env_vars, check=True)
 
     try:
+        # Remove the existing local vendor directory before copying the freshly
+        # generated one from the sandbox. Without this, files that disappeared
+        # from the new vendor tree may stay in the package checkout and later
+        # get into the source tarball, producing a mixed/stale vendor directory.
+        if vendor_dest_path == ".":
+            local_vendor_path = Path(vendor_dir_name)
+        else:
+            local_vendor_path = Path(vendor_dest_path) / vendor_dir_name
+
+        if local_vendor_path in (Path("."), Path("/")):
+            raise RuntimeError(f"Refusing to remove unsafe vendor path: {local_vendor_path}")
+
+        if local_vendor_path.exists():
+            logger.info(f"Removing existing local vendor directory: {local_vendor_path}")
+            subprocess.run(["rm", "-rf", str(local_vendor_path)], check=True)
+
         env.copy_from(vendor_source_path, vendor_dest_path)
 
         # Check if vendor directory exists in the previous commit (HEAD)
-        # Note: vendor_dest_path might be "." (current dir), so we need to check "vendor" specifically
-        vendor_check_path = "vendor" if vendor_dest_path == "." else vendor_dest_path
+        # Note: vendor_dest_path might be "." (current dir), so we need to check the actual vendor dir name
+        vendor_check_path = vendor_dir_name if vendor_dest_path == "." else vendor_dest_path
         vendor_tracked = False
         try:
             result = subprocess.run(
@@ -178,7 +199,7 @@ def _update_vendor_common(
         # Stage the vendor directory (force to ignore .gitignore rules)
         # Use -f to ensure ALL vendor files are added, even if matched by .gitignore
         if vendor_dest_path == ".":
-            subprocess.run(["git", "add", "-f", "vendor"], check=True)
+            subprocess.run(["git", "add", "-f", vendor_dir_name], check=True)
         else:
             subprocess.run(["git", "add", "-f", vendor_dest_path], check=True)
 
@@ -203,7 +224,7 @@ def _update_vendor_common(
             ).stdout.strip().split("\n")
 
             # Determine the full vendor path to check
-            vendor_path_to_check = "vendor" if vendor_dest_path == "." else vendor_dest_path
+            vendor_path_to_check = vendor_dir_name if vendor_dest_path == "." else vendor_dest_path
             # Normalize path (handle both "vendor" and "vendor/" formats)
             vendor_prefix = vendor_path_to_check.rstrip("/") + "/"
 
@@ -400,6 +421,7 @@ def rust(
         reinit=reinit,
         tag=tag,
         force_commit=force_commit,
+        vendor_dir_name="vendor",
     )
 
     # POST-PROCESSING: Statistics and cleanup
@@ -591,8 +613,9 @@ def go(
         export GOROOT=/usr/lib/golang;
         export GOPATH=/tmp/gopath;
         {cd_cmd}
-        mkdir -p vendor;
-        go mod vendor -e;""",
+        rm -rf vendor;
+        go mod vendor;
+        go list -mod=vendor ./...;""",
         vendor_source_path=vendor_source_path,
         vendor_dest_path=normalized_dest,
         gear_rules_hint="tar: vendor name=vendor",
@@ -601,6 +624,7 @@ def go(
         reinit=reinit,
         tag=tag,
         force_commit=force_commit,
+        vendor_dir_name="vendor",
     )
 
 
@@ -668,6 +692,7 @@ def npm(
         reinit=reinit,
         tag=tag,
         force_commit=force_commit,
+        vendor_dir_name="node_modules",
     )
 
 
