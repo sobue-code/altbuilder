@@ -27,6 +27,7 @@ from .update_submodules_cmd import update_submodules
 from .git_alt_cmd import git_alt_cmd
 from .vendor_cmd import vendor_app
 from .path_cmd import path
+from .check_deps_cmd import check_deps_cmd
 
 app = typer.Typer(
     name="altbuilder",
@@ -121,6 +122,7 @@ app.command("merge-tag")(merge_tag)
 app.command("rpmdiff")(rpmdiff_cmd)
 app.command("git.alt")(git_alt_cmd)
 app.command("path")(path)
+app.command("check-deps")(check_deps_cmd)
 app.add_typer(copy_app, name="copy")
 app.add_typer(vendor_app, name="vendor")
 
