@@ -154,6 +154,32 @@ def merge_tag(
         if path_exists_in_revision("HEAD@{1}", path):
             subprocess.run(["git", "checkout", "HEAD@{1}", "--", path], check=True)
 
+    # Remove files that exist in HEAD@{1} but not in the tag (except excluded paths)
+    # This handles the case where 'git checkout tag -- .' doesn't delete files
+    result_head = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", "HEAD@{1}"],
+        capture_output=True,
+        text=True,
+    )
+    result_tag = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", tag],
+        capture_output=True,
+        text=True,
+    )
+
+    files_in_head = set(line.strip() for line in result_head.stdout.splitlines() if line.strip())
+    files_in_tag = set(line.strip() for line in result_tag.stdout.splitlines() if line.strip())
+    files_to_delete = files_in_head - files_in_tag
+
+    for file in sorted(files_to_delete):
+        if not is_excluded_path(file, excluded_paths):
+            try:
+                subprocess.run(["git", "rm", "-f", file], check=True, capture_output=True)
+                rich_print(f"[yellow]Removed file not in tag: {file}[/yellow]")
+            except subprocess.CalledProcessError:
+                # File might already be deleted or not exist in working tree
+                pass
+
     # Add everything, just in case
     subprocess.run(["git", "add", "."], check=True)
 
