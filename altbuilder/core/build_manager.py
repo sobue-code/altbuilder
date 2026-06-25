@@ -1,6 +1,7 @@
 import os
 import shutil
 import shlex
+import subprocess
 from datetime import datetime
 from ..exceptions import BuildError
 from ..utils.logger import logger
@@ -91,61 +92,73 @@ class BuildManager:
             release=release,
             rebuild_id=rebuild_id,
         ):
-            if is_src_rpm:
-                extra_args = shlex.split(hsh_extra) if hsh_extra else []
-                # Prepare rpmbuild args for src.rpm builds
-                rpmbuild_args = []
-                if rpmbuild_extra:
-                    rpmbuild_args.extend(shlex.split(rpmbuild_extra))
-                if no_check:
-                    rpmbuild_args.append("--without=check")
-                if rpmbuild_args:
-                    extra_args.append("--rpmbuild-args")
-                    extra_args.append(" ".join(rpmbuild_args))
-                self.hasher_adapter.build_from_srpm(
-                    src_rpm=build_target,
-                    workdir=self.environment.hasher_dir,
-                    apt_config=apt_conf or self.environment.apt_conf,
-                    arch=self.environment.config["arch"],
-                    log_file=log_file,
-                    extra_args=extra_args,
-                    sandbox_name=self.environment.name,
-                    package_name=package_name,
-                )
-            else:
-                hasher_args = [
-                    "hsh",
-                    "--apt-config",
-                    apt_conf or self.environment.apt_conf,
-                    "--mount=/proc,/dev/pts,/dev/console",
-                    "--verbose",
-                    "--no-sisyphus-check=packager,gpg",
-                    "--target",
-                    self.environment.config["arch"],
-                    self.environment.hasher_dir,
-                    "--lazy-cleanup",
-                ]
-                if only_srpm:
-                    hasher_args.append("--build-srpm-only")
+            try:
+                if is_src_rpm:
+                    extra_args = shlex.split(hsh_extra) if hsh_extra else []
+                    # Prepare rpmbuild args for src.rpm builds
+                    rpmbuild_args = []
+                    if rpmbuild_extra:
+                        rpmbuild_args.extend(shlex.split(rpmbuild_extra))
+                    if no_check:
+                        rpmbuild_args.append("--without=check")
+                    if rpmbuild_args:
+                        extra_args.append("--rpmbuild-args")
+                        extra_args.append(" ".join(rpmbuild_args))
+                    self.hasher_adapter.build_from_srpm(
+                        src_rpm=build_target,
+                        workdir=self.environment.hasher_dir,
+                        apt_config=apt_conf or self.environment.apt_conf,
+                        arch=self.environment.config["arch"],
+                        log_file=log_file,
+                        extra_args=extra_args,
+                        sandbox_name=self.environment.name,
+                        package_name=package_name,
+                    )
+                else:
+                    hasher_args = [
+                        "hsh",
+                        "--apt-config",
+                        apt_conf or self.environment.apt_conf,
+                        "--mount=/proc,/dev/pts,/dev/console",
+                        "--verbose",
+                        "--no-sisyphus-check=packager,gpg",
+                        "--target",
+                        self.environment.config["arch"],
+                        self.environment.hasher_dir,
+                        "--lazy-cleanup",
+                    ]
+                    if only_srpm:
+                        hasher_args.append("--build-srpm-only")
 
-                # Inject extra hsh arguments
-                if hsh_extra:
-                    hasher_args[1:1] = shlex.split(hsh_extra)
+                    # Inject extra hsh arguments
+                    if hsh_extra:
+                        hasher_args[1:1] = shlex.split(hsh_extra)
 
-                # Prepare extra rpmbuild args
-                rpmbuild_args = []
-                if rpmbuild_extra:
-                    rpmbuild_args.extend(shlex.split(rpmbuild_extra))
-                if no_check:
-                    rpmbuild_args.append("--without=check")
+                    # Prepare extra rpmbuild args
+                    rpmbuild_args = []
+                    if rpmbuild_extra:
+                        rpmbuild_args.extend(shlex.split(rpmbuild_extra))
+                    if no_check:
+                        rpmbuild_args.append("--without=check")
 
-                self.gear_adapter.build(
-                    workdir=build_target,
-                    hasher_args=hasher_args,
-                    build_log_dir=build_log_dir,
-                    rpmbuild_args=rpmbuild_args if rpmbuild_args else None,
-                    log_file=log_file,
-                )
+                    self.gear_adapter.build(
+                        workdir=build_target,
+                        hasher_args=hasher_args,
+                        build_log_dir=build_log_dir,
+                        rpmbuild_args=rpmbuild_args if rpmbuild_args else None,
+                        log_file=log_file,
+                    )
+            except subprocess.CalledProcessError as e:
+                if e.returncode == 100:
+                    mirror = self.environment.config.get("mirror", "")
+                    hint = ""
+                    if mirror.startswith("file:/"):
+                        hint = f" Check that {mirror.replace('file:', '')} is accessible."
+                    raise BuildError(
+                        f"Build failed (repository or dependency issue).{hint}\n"
+                        f"See log: {log_file}"
+                    ) from e
+                raise
 
             logger.info(f"Build logs saved to: {build_log_dir}")
             return build_log_dir

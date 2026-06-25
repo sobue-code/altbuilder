@@ -2,6 +2,7 @@ import typer
 from rich import print as rich_print
 
 from altbuilder.config import load_config
+from altbuilder.exceptions import EnvironmentError
 from altbuilder.utils.json_utils import is_json_mode, json_response
 from altbuilder.utils.setup_sandbox import setup_sandbox
 from altbuilder.utils import logger
@@ -79,6 +80,14 @@ def init_cmd(
         else:
             rich_print(f"[green]{success_msg}[/green]")
 
+    except EnvironmentError as e:
+        error_msg = str(e)
+        logger.error(error_msg)
+        if json_mode:
+            json_response(ctx, "error", params=params, message=error_msg, code=1)
+        else:
+            rich_print(f"[red]{error_msg}[/red]")
+            raise typer.Exit(code=1)
     except Exception as e:
         error_msg = f"Failed to initialize sandbox: {e}"
         logger.error(error_msg)

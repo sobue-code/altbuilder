@@ -227,10 +227,22 @@ APT::Cache-Limit "201326592";
         cmd.append(self.hasher_dir)
 
         command_str = " ".join(cmd)
-        with self.metrics.track_command(
-            command=command_str, log_dir=log_dir, sandbox_name=self.name
-        ):
-            run_logged_command(cmd, check=True, real_time=True, log_file=init_log)
+        try:
+            with self.metrics.track_command(
+                command=command_str, log_dir=log_dir, sandbox_name=self.name
+            ):
+                run_logged_command(cmd, check=True, real_time=True, log_file=init_log)
+        except subprocess.CalledProcessError as e:
+            if e.returncode == 100:
+                mirror = self.config.get("mirror", "")
+                hint = ""
+                if mirror.startswith("file:/"):
+                    hint = f"\nCheck that {mirror.replace('file:', '')} is mounted and accessible."
+                raise EnvironmentError(
+                    f"Failed to initialize sandbox (repository access issue).{hint}\n"
+                    f"See log: {init_log}"
+                ) from e
+            raise
         self.serialize()
         logger.info(f"Sandbox initialization logs saved to: {log_dir}")
 

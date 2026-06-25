@@ -5,7 +5,7 @@ from rich import print as rich_print
 
 from altbuilder.config import load_config
 from altbuilder.core.build_manager import BuildManager
-from altbuilder.exceptions import ToolError
+from altbuilder.exceptions import ToolError, EnvironmentError, BuildError
 from altbuilder.utils import get_spec_metadata, init_logger, logger
 from altbuilder.utils.helpers import is_pyproject_deps_sync_error
 from altbuilder.utils.setup_sandbox import setup_sandbox
@@ -79,7 +79,17 @@ def build_cmd(
             build_target = os.getcwd()
 
     # Set up sandbox environment
-    env = setup_sandbox(sandbox, branch, arch, reinit, config, task_id=task)
+    try:
+        env = setup_sandbox(sandbox, branch, arch, reinit, config, task_id=task)
+    except EnvironmentError as e:
+        error_msg = str(e)
+        logger.error(error_msg)
+        if json_mode:
+            json_response(ctx, "error", message=error_msg, code=1)
+        else:
+            rich_print(f"[red]{error_msg}[/red]")
+            raise typer.Exit(code=1)
+
     if env is None:
         error_msg = "Failed to initialize sandbox."
         logger.error(error_msg)
@@ -175,10 +185,10 @@ def build_cmd(
                 rich_print(f"[cyan]Build logs available at: {built_log_dir}[/cyan]")
             return  # Success - exit function
 
-        except ToolError as e:
+        except (ToolError, BuildError) as e:
             last_error = e
             # Check if this is a pyproject_deps sync error and we can retry
-            if attempt < max_retries and auto_retry_deps and is_pyproject_deps_sync_error(e):
+            if isinstance(e, ToolError) and attempt < max_retries and auto_retry_deps and is_pyproject_deps_sync_error(e):
                 deps_update_msg = f"Attempt {attempt + 1} failed with pyproject_deps sync error (exit code {getattr(e, 'exit_code', 'unknown')})"
                 logger.warning(deps_update_msg)
                 if not json_mode:
