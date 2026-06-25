@@ -1,4 +1,5 @@
 import os
+import getpass
 from pathlib import Path
 import tomli
 
@@ -9,6 +10,11 @@ from ..exceptions import ConfigError
 USER_CONFIG_DIR = Path.home() / ".altbuilder"
 USER_CONFIG_FILE = USER_CONFIG_DIR / "config.toml"
 DEFAULT_CONFIG_FILE = Path(__file__).parent / "default_config.toml"
+
+
+def _get_username():
+    """Return the current user name without requiring a controlling terminal."""
+    return getpass.getuser()
 
 
 def load_config(config_file=None):
@@ -32,6 +38,22 @@ def load_config(config_file=None):
             logger.error(f"Failed to load default config: {e}")
             raise ConfigError(f"Cannot load default config: {e}")
 
+    # Expand placeholders in config values
+    username = _get_username()
+    home_dir = str(Path.home())
+
+    def expand_placeholders(value):
+        """Recursively expand placeholders in config values."""
+        if isinstance(value, str):
+            return value.replace("<user>", username).replace("~", home_dir)
+        elif isinstance(value, dict):
+            return {k: expand_placeholders(v) for k, v in value.items()}
+        elif isinstance(value, list):
+            return [expand_placeholders(item) for item in value]
+        return value
+
+    config = expand_placeholders(config)
+
     # Validate and set defaults
     config.setdefault("base_dir", str(USER_CONFIG_DIR))
     config.setdefault(
@@ -44,7 +66,7 @@ def load_config(config_file=None):
     config.setdefault("mirror", "http://ftp.altlinux.org/pub/distributions")
     config.setdefault("mirror_task", "http://git.altlinux.org")
     config.setdefault("rdb_url", "https://rdb.altlinux.org")
-    config.setdefault("packager", f"{os.getlogin()} <{os.getlogin()}@altlinux.org>")
+    config.setdefault("packager", f"{username} <{username}@altlinux.org>")
     config.setdefault(
         "logging",
         {
